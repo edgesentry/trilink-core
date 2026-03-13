@@ -6,7 +6,8 @@ Neither the robot platform nor the AI platform connects the image to a 3D locati
 
 ## Documentation
 
-- [docs/background.md](docs/background.md) — why it exists, target industries, open source strategy
+- [docs/background.md](docs/background.md) — why it exists, target industries, future applications
+- [docs/strategy.md](docs/strategy.md) — open source vs. enterprise split, business rationale
 - [docs/scenarios.md](docs/scenarios.md) — end-to-end scenarios, deployment difficulty, case studies, implementation order
 - [docs/assumptions.md](docs/assumptions.md) — role boundaries, interface contracts, deployment decision
 - [docs/architecture.md](docs/architecture.md) — data flow, module map, data structures

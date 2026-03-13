@@ -87,7 +87,8 @@ See [docs/contributing.md](docs/contributing.md) for all build, test, and contri
 | Document | Contents |
 |---|---|
 | [README.md](README.md) | High-level overview |
-| [docs/background.md](docs/background.md) | Project context, why it exists, future applications, open source strategy |
+| [docs/background.md](docs/background.md) | Project context, why it exists, future applications |
+| [docs/strategy.md](docs/strategy.md) | Open source vs. enterprise split, business rationale |
 | [docs/scenarios.md](docs/scenarios.md) | End-to-end scenarios, deployment difficulty, case studies, implementation order |
 | [docs/architecture.md](docs/architecture.md) | Data flow, module map, data structures, crate deps |
 | [docs/math.md](docs/math.md) | Coordinate systems, camera model, unprojection math (prerequisite reading) |
