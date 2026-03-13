@@ -1,0 +1,19 @@
+[robot]
+pose_endpoint  = "http://robot.local:8080/pose"
+image_endpoint = "http://robot.local:8080/frame"
+
+[camera]
+fx               = 1200.0
+fy               = 1200.0
+cx               = 960.0
+cy               = 540.0
+fallback_depth_m = 2.0
+
+[inference]
+base_url = "https://api.example.com/v1/infer"
+api_key  = "YOUR_API_KEY"
+
+[output]
+jsonl_path  = "reports/damage_map.jsonl"
+sqlite_path = "damage.db"
+frame_dir   = "frames/"

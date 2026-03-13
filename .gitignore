@@ -1,0 +1,6 @@
+/target
+Cargo.lock
+reports/
+frames/
+damage.db
+*.jsonl

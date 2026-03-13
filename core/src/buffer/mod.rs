@@ -1,0 +1,124 @@
+use crate::Transform4x4;
+
+/// A timestamped pose entry stored in the ring buffer.
+#[derive(Debug, Clone, Copy)]
+struct Entry {
+    ts_us: u64,
+    pose: Transform4x4,
+}
+
+/// Ring buffer of robot poses indexed by capture timestamp.
+///
+/// Capacity is fixed at construction time. When full, the oldest entry is
+/// overwritten. Lookup is O(log n) via binary search on `ts_us`.
+pub struct PoseBuffer {
+    entries: Vec<Entry>,
+    capacity: usize,
+    head: usize,
+    len: usize,
+    tolerance_us: u64,
+}
+
+impl PoseBuffer {
+    pub fn new(capacity: usize, tolerance_us: u64) -> Self {
+        Self {
+            entries: Vec::with_capacity(capacity),
+            capacity,
+            head: 0,
+            len: 0,
+            tolerance_us,
+        }
+    }
+
+    /// Insert a pose with its capture timestamp.
+    pub fn push(&mut self, ts_us: u64, pose: Transform4x4) {
+        let entry = Entry { ts_us, pose };
+        if self.len < self.capacity {
+            self.entries.push(entry);
+            self.len += 1;
+        } else {
+            self.entries[self.head] = entry;
+            self.head = (self.head + 1) % self.capacity;
+        }
+    }
+
+    /// Returns a sorted slice view (by ts_us) for binary search.
+    fn sorted_entries(&self) -> Vec<Entry> {
+        let mut v: Vec<Entry> = self.entries[..self.len].to_vec();
+        v.sort_by_key(|e| e.ts_us);
+        v
+    }
+
+    /// Look up the robot pose at `capture_ts_us`.
+    ///
+    /// Returns `None` if no entry is within `tolerance_us` of the requested
+    /// timestamp.
+    pub fn pose_at(&self, capture_ts_us: u64) -> Option<Transform4x4> {
+        if self.len == 0 {
+            return None;
+        }
+        let sorted = self.sorted_entries();
+        let idx = sorted.partition_point(|e| e.ts_us <= capture_ts_us);
+
+        // Candidates: the entry just before and just after the target.
+        let mut best: Option<(u64, Transform4x4)> = None;
+        for &i in &[idx.wrapping_sub(1), idx] {
+            if let Some(e) = sorted.get(i) {
+                let delta = e.ts_us.abs_diff(capture_ts_us);
+                if delta <= self.tolerance_us {
+                    if best.map_or(true, |(d, _)| delta < d) {
+                        best = Some((delta, e.pose));
+                    }
+                }
+            }
+        }
+        best.map(|(_, pose)| pose)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity() -> Transform4x4 {
+        Transform4x4::identity()
+    }
+
+    #[test]
+    fn exact_match() {
+        let mut buf = PoseBuffer::new(16, 200_000);
+        buf.push(1_000, identity());
+        buf.push(2_000, identity());
+        assert!(buf.pose_at(1_000).is_some());
+        assert!(buf.pose_at(2_000).is_some());
+    }
+
+    #[test]
+    fn nearest_within_tolerance() {
+        let mut buf = PoseBuffer::new(16, 200_000);
+        buf.push(1_000_000, identity());
+        // Query 50 ms after — within 200 ms tolerance.
+        assert!(buf.pose_at(1_050_000).is_some());
+    }
+
+    #[test]
+    fn outside_tolerance_returns_none() {
+        let mut buf = PoseBuffer::new(16, 200_000);
+        buf.push(1_000_000, identity());
+        // Query 300 ms after — outside 200 ms tolerance.
+        assert!(buf.pose_at(1_300_000).is_none());
+    }
+
+    #[test]
+    fn ring_overwrites_oldest() {
+        let mut buf = PoseBuffer::new(4, 200_000);
+        for i in 0..6u64 {
+            buf.push(i * 1_000_000, identity());
+        }
+        // Oldest entries (0, 1) should be gone.
+        assert!(buf.pose_at(0).is_none());
+        assert!(buf.pose_at(1_000_000).is_none());
+        // Recent entries should still be present.
+        assert!(buf.pose_at(5_000_000).is_some());
+    }
+}
