@@ -3,6 +3,7 @@ name        = "tri-link"
 version     = "0.1.0"
 edition     = "2021"
 description = "Tri-Link integration bridge — enterprise binary"
+publish     = false
 
 [[bin]]
 name = "trilink"
