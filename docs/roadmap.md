@@ -14,16 +14,16 @@ Implementation is divided into six milestones. Each builds on the previous and e
 
 ---
 
-## M2 — Unprojection Math
+## M2 — Unprojection Math ✅
 
 Resolve a detection's pixel center to a 3D world coordinate.
 
-- [ ] Implement `core/src/bridge/unproject.rs`:
+- [x] Implement `core/src/bridge/unproject.rs`:
   - Input: `BBox2D`, `depth_m: Option<f32>`, `fallback_depth_m: f32`, `CameraIntrinsics`, `Transform4x4`
   - Output: `Point3D` in world frame
   - Formula: `P_camera = K⁻¹ · [u, v, 1]ᵀ · depth` → `P_world = pose · [P_camera, 1]ᵀ`
   - When `depth_m` is `None`, use `fallback_depth_m` (caller passes `config.camera.fallback_depth_m`)
-- [ ] Unit tests:
+- [x] Unit tests:
   - Identity pose + known intrinsics → deterministic world coordinate
   - Depth scales world coordinate proportionally
   - Edge pixel `(u=0, v=0)` → correct corner coordinate
