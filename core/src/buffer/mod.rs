@@ -65,10 +65,8 @@ impl PoseBuffer {
         for &i in &[idx.wrapping_sub(1), idx] {
             if let Some(e) = sorted.get(i) {
                 let delta = e.ts_us.abs_diff(capture_ts_us);
-                if delta <= self.tolerance_us {
-                    if best.map_or(true, |(d, _)| delta < d) {
-                        best = Some((delta, e.pose));
-                    }
+                if delta <= self.tolerance_us && best.is_none_or(|(d, _)| delta < d) {
+                    best = Some((delta, e.pose));
                 }
             }
         }
