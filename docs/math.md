@@ -100,7 +100,7 @@ x_norm = (u - cx) / fx
 y_norm = (v - cy) / fy
 ```
 
-This removes the camera's optical distortion and scale, giving a direction vector in camera space.
+This removes the camera's focal length scale and principal point offset, giving a direction vector in normalised image coordinates (camera space ray direction).
 
 **Step 2 — Scale by depth:**
 

@@ -134,4 +134,41 @@ mod tests {
         src.next_frame().unwrap();
         assert!(src.next_frame().is_err());
     }
+
+    #[test]
+    fn first_frame_timestamp_equals_base() {
+        let base = 5_000_000u64;
+        let mut src = MockSource::new(base, 30, 2.0).with_limit(1);
+        let frame = src.next_frame().unwrap();
+        assert_eq!(frame.capture_ts_us, base);
+    }
+
+    #[test]
+    fn frame_interval_matches_fps() {
+        let fps = 10u32;
+        let mut src = MockSource::new(0, fps, 1.0).with_limit(3);
+        let f0 = src.next_frame().unwrap();
+        let f1 = src.next_frame().unwrap();
+        let expected_step_us = 1_000_000 / fps as u64;
+        assert_eq!(f1.capture_ts_us - f0.capture_ts_us, expected_step_us);
+    }
+
+    #[test]
+    fn depth_matches_configured_value() {
+        let mut src = MockSource::new(0, 30, 3.5).with_limit(1);
+        let frame = src.next_frame().unwrap();
+        assert_eq!(frame.depth_m, Some(3.5));
+    }
+
+    #[test]
+    fn frame_zero_pose_is_identity_rotation() {
+        // angle = 0 * 0.1 = 0 → cos=1, sin=0 → identity rotation
+        let mut src = MockSource::new(0, 30, 1.0).with_limit(1);
+        let frame = src.next_frame().unwrap();
+        let m = frame.pose.matrix;
+        assert!((m[0] - 1.0).abs() < 1e-6, "m[0,0] should be cos(0)=1");
+        assert!((m[1] - 0.0).abs() < 1e-6, "m[0,1] should be -sin(0)=0");
+        assert!((m[4] - 0.0).abs() < 1e-6, "m[1,0] should be sin(0)=0");
+        assert!((m[5] - 1.0).abs() < 1e-6, "m[1,1] should be cos(0)=1");
+    }
 }

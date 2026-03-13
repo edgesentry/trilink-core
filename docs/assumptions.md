@@ -107,7 +107,7 @@ The deployment decision is operational, not a code change. Quantization (if on-r
 | Parameter | Default | Configurable? |
 |---|---|---|
 | Fallback depth when ToF unavailable | 2.0 m | Yes (`camera.fallback_depth_m`) |
-| Pose buffer temporal tolerance | 200 ms | Hardcoded; changeable at `PoseBuffer::new` |
+| Pose buffer temporal tolerance | 200 ms | Default; configurable via `PoseBuffer::new` parameter |
 | Expected accuracy with ToF | ~1 cm at 2 m depth | Depends on ToF precision and calibration quality |
 | Expected accuracy with fallback depth | ±10 cm (depth error dominates) | Depends on actual target distance vs. assumed 2.0 m |
 

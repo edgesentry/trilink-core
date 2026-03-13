@@ -1,6 +1,6 @@
 # Roadmap
 
-Implementation is divided into six milestones. Each builds on the previous and ends with a passing `cargo test`.
+Implementation is divided into six milestones. Each builds on the previous and ends with a passing `cargo test --workspace`.
 
 ---
 
@@ -18,11 +18,11 @@ Implementation is divided into six milestones. Each builds on the previous and e
 
 Resolve a detection's pixel center to a 3D world coordinate.
 
-- [ ] Implement `bridge/unproject.rs`:
-  - Input: `BBox2D`, `depth_m`, `CameraIntrinsics`, `Transform4x4`
+- [ ] Implement `core/src/bridge/unproject.rs`:
+  - Input: `BBox2D`, `depth_m: Option<f32>`, `fallback_depth_m: f32`, `CameraIntrinsics`, `Transform4x4`
   - Output: `Point3D` in world frame
   - Formula: `P_camera = K⁻¹ · [u, v, 1]ᵀ · depth` → `P_world = pose · [P_camera, 1]ᵀ`
-  - Fallback: use `config.camera.fallback_depth_m` when `depth_m` is `None`
+  - When `depth_m` is `None`, use `fallback_depth_m` (caller passes `config.camera.fallback_depth_m`)
 - [ ] Unit tests:
   - Identity pose + known intrinsics → deterministic world coordinate
   - Depth scales world coordinate proportionally
@@ -35,8 +35,8 @@ Resolve a detection's pixel center to a 3D world coordinate.
 
 Call the inference HTTP endpoint and parse detections.
 
-- [ ] Implement `infer/types.rs`: request and response structs with `serde` derives
-- [ ] Implement `InferenceClient` in `infer/mod.rs`:
+- [ ] Implement `app/src/infer/types.rs`: request and response structs with `serde` derives
+- [ ] Implement `InferenceClient` in `app/src/infer/mod.rs`:
   - `POST multipart/form-data` with JPEG bytes
   - `X-Capture-Ts: {capture_ts_us}` request header
   - Parse JSON response: `[{class, confidence, bbox, input_ts}]`
@@ -51,10 +51,10 @@ Call the inference HTTP endpoint and parse detections.
 
 Wire pose lookup and unprojection together into a complete `InspectionPacket`.
 
-- [ ] Implement `bridge/sync.rs`:
+- [ ] Implement `app/src/bridge/sync.rs`:
   - Accept an inference result carrying `input_ts`
   - Look up `PoseBuffer.pose_at(input_ts)` → `TriError::PoseNotFound` if outside tolerance
-- [ ] Assemble `InspectionPacket` in `bridge/mod.rs`:
+- [ ] Assemble `InspectionPacket` in `app/src/bridge/mod.rs`:
   - Call `unproject` for each detection
   - Fill `world_pos` from the resolved pose
 - [ ] Unit tests:
@@ -67,7 +67,7 @@ Wire pose lookup and unprojection together into a complete `InspectionPacket`.
 
 Write located damage records to disk.
 
-- [ ] Implement `egress/semantic_map.rs`:
+- [ ] Implement `app/src/egress/semantic_map.rs`:
   - Append one JSON line per detection to `reports/damage_map.jsonl`
   - Schema: `{ts, class, confidence, world_pos: {x,y,z}, image_ref}`
   - Feature-gated SQLite writer: insert into `damage.db` (columns: `ts`, `class`, `confidence`, `x`, `y`, `z`, `image_ref`)
