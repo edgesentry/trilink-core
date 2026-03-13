@@ -17,3 +17,34 @@ pub enum TriError {
     #[error("SQLite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pose_not_found_message_includes_timestamp() {
+        let err = TriError::PoseNotFound(123_456_789);
+        assert!(err.to_string().contains("123456789"));
+    }
+
+    #[test]
+    fn inference_error_message_includes_detail() {
+        let err = TriError::Inference("connection refused".to_string());
+        assert!(err.to_string().contains("connection refused"));
+    }
+
+    #[test]
+    fn config_error_message_includes_detail() {
+        let err = TriError::Config("missing field: base_url".to_string());
+        assert!(err.to_string().contains("missing field: base_url"));
+    }
+
+    #[test]
+    fn io_error_converts_via_from() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file missing");
+        let tri_err = TriError::from(io_err);
+        assert!(matches!(tri_err, TriError::Io(_)));
+        assert!(tri_err.to_string().contains("file missing"));
+    }
+}

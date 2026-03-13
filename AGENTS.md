@@ -29,7 +29,7 @@ core/src/
     mod.rs            PoseBuffer: ring buffer keyed by capture_ts_us
   bridge/
     mod.rs            re-exports unproject
-    unproject.rs      (M3) (u,v,depth) → world (X,Y,Z)
+    unproject.rs      (M2) (u,v,depth) → world (X,Y,Z)
 
 app/src/
   lib.rs              Re-exports core types; declares closed-source modules
@@ -37,14 +37,15 @@ app/src/
     mod.rs            re-exports sync
     sync.rs           (M4) join inference result → pose by timestamp
   infer/
-    mod.rs            InferenceClient (M4)
-    types.rs          API request / response types (M4)
+    mod.rs            InferenceClient (M3)
+    types.rs          API request / response types (M3)
   egress/
+    mod.rs            DamageRecord output (M5)
     semantic_map.rs   JSONL + SQLite writer (M5)
   main.rs             CLI: clap Subcommand::Run { config }
 ```
 
-Modules marked `(M3)`, `(M4)`, `(M5)` are stubs — not yet implemented.
+Modules marked `(M2)`, `(M3)`, `(M4)`, `(M5)` are stubs — not yet implemented.
 
 ---
 
@@ -61,6 +62,7 @@ Modules marked `(M3)`, `(M4)`, `(M5)` are stubs — not yet implemented.
 | `RobotSource` | `core/src/ingress/mod.rs` | Trait for frame sources; implement for real hardware |
 | `MockSource` | `core/src/ingress/mock.rs` | Deterministic test source; use `.with_limit(n)` in tests |
 | `TriError` | `core/src/error.rs` | All error variants; feature-gated `Sqlite` variant |
+| `DamageRecord` | `app/src/egress/mod.rs` | (M5) Output record written to JSONL and SQLite per detection |
 
 ---
 
@@ -85,7 +87,8 @@ See [docs/contributing.md](docs/contributing.md) for all build, test, and contri
 | Document | Contents |
 |---|---|
 | [README.md](README.md) | High-level overview |
-| [docs/background.md](docs/background.md) | Project context, why it exists, future applications, open source strategy |
+| [docs/background.md](docs/background.md) | Project context, why it exists, future applications |
+| [docs/strategy.md](docs/strategy.md) | Open source vs. enterprise split, business rationale |
 | [docs/scenarios.md](docs/scenarios.md) | End-to-end scenarios, deployment difficulty, case studies, implementation order |
 | [docs/architecture.md](docs/architecture.md) | Data flow, module map, data structures, crate deps |
 | [docs/math.md](docs/math.md) | Coordinate systems, camera model, unprojection math (prerequisite reading) |

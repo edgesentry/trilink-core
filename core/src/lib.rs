@@ -89,3 +89,97 @@ impl BBox2D {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- BBox2D::center ---
+
+    #[test]
+    fn bbox_center_symmetric() {
+        let bbox = BBox2D { u0: 10, v0: 20, u1: 30, v1: 40 };
+        assert_eq!(bbox.center(), (20.0, 30.0));
+    }
+
+    #[test]
+    fn bbox_center_fractional() {
+        // Odd-width box: centre falls on a half-pixel
+        let bbox = BBox2D { u0: 0, v0: 0, u1: 1, v1: 3 };
+        assert_eq!(bbox.center(), (0.5, 1.5));
+    }
+
+    #[test]
+    fn bbox_center_degenerate_zero_size() {
+        let bbox = BBox2D { u0: 5, v0: 7, u1: 5, v1: 7 };
+        assert_eq!(bbox.center(), (5.0, 7.0));
+    }
+
+    // --- Transform4x4::identity ---
+
+    #[test]
+    fn identity_diagonal_is_one() {
+        let t = Transform4x4::identity();
+        assert_eq!(t.matrix[0],  1.0); // [0,0]
+        assert_eq!(t.matrix[5],  1.0); // [1,1]
+        assert_eq!(t.matrix[10], 1.0); // [2,2]
+        assert_eq!(t.matrix[15], 1.0); // [3,3]
+    }
+
+    #[test]
+    fn identity_off_diagonal_is_zero() {
+        let t = Transform4x4::identity();
+        for (i, &v) in t.matrix.iter().enumerate() {
+            let row = i / 4;
+            let col = i % 4;
+            if row != col {
+                assert_eq!(v, 0.0, "matrix[{i}] (row={row}, col={col}) expected 0");
+            }
+        }
+    }
+
+    // --- Serde roundtrips ---
+
+    #[test]
+    fn inspection_packet_roundtrip() {
+        let packet = InspectionPacket {
+            capture_ts_us: 42_000_000,
+            pose: Transform4x4::identity(),
+            camera_k: CameraIntrinsics { fx: 800.0, fy: 800.0, cx: 960.0, cy: 540.0 },
+            image_jpeg: vec![0xff, 0xd8, 0xff, 0xd9],
+            detections: vec![Detection {
+                class: "scratch".to_string(),
+                confidence: 0.92,
+                bbox: BBox2D { u0: 100, v0: 200, u1: 150, v1: 250 },
+                world_pos: Some(Point3D { x: 1.0, y: 2.0, z: 3.0 }),
+                depth_m: Some(2.5),
+            }],
+        };
+        let json = serde_json::to_string(&packet).unwrap();
+        let decoded: InspectionPacket = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.capture_ts_us, 42_000_000);
+        assert_eq!(decoded.detections.len(), 1);
+        assert_eq!(decoded.detections[0].class, "scratch");
+        assert!((decoded.detections[0].confidence - 0.92).abs() < 1e-5);
+        let wp = decoded.detections[0].world_pos.unwrap();
+        assert_eq!(wp.x, 1.0);
+        assert_eq!(wp.y, 2.0);
+        assert_eq!(wp.z, 3.0);
+    }
+
+    #[test]
+    fn detection_with_no_world_pos_roundtrip() {
+        let d = Detection {
+            class: "dent".to_string(),
+            confidence: 0.75,
+            bbox: BBox2D { u0: 0, v0: 0, u1: 10, v1: 10 },
+            world_pos: None,
+            depth_m: None,
+        };
+        let json = serde_json::to_string(&d).unwrap();
+        let decoded: Detection = serde_json::from_str(&json).unwrap();
+        assert!(decoded.world_pos.is_none());
+        assert!(decoded.depth_m.is_none());
+        assert_eq!(decoded.class, "dent");
+    }
+}

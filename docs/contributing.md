@@ -14,6 +14,7 @@ trilink run --config config.toml
 cargo build                          # debug build
 cargo build --release                # release build
 cargo test                           # all unit tests
+cargo test --workspace               # all unit tests across all crates
 cargo test --features sqlite         # include SQLite feature
 cargo clippy --all-targets -- -D warnings
 cargo deny check licenses

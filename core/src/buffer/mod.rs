@@ -65,10 +65,8 @@ impl PoseBuffer {
         for &i in &[idx.wrapping_sub(1), idx] {
             if let Some(e) = sorted.get(i) {
                 let delta = e.ts_us.abs_diff(capture_ts_us);
-                if delta <= self.tolerance_us {
-                    if best.map_or(true, |(d, _)| delta < d) {
-                        best = Some((delta, e.pose));
-                    }
+                if delta <= self.tolerance_us && best.is_none_or(|(d, _)| delta < d) {
+                    best = Some((delta, e.pose));
                 }
             }
         }
@@ -120,5 +118,45 @@ mod tests {
         assert!(buf.pose_at(1_000_000).is_none());
         // Recent entries should still be present.
         assert!(buf.pose_at(5_000_000).is_some());
+    }
+
+    #[test]
+    fn empty_buffer_returns_none() {
+        let buf = PoseBuffer::new(16, 200_000);
+        assert!(buf.pose_at(1_000_000).is_none());
+    }
+
+    #[test]
+    fn picks_closer_of_two_candidates() {
+        let mut buf = PoseBuffer::new(16, 500_000);
+        // Distinguish poses by x-translation so we can tell which was returned.
+        let mut pose_a = Transform4x4::identity();
+        pose_a.matrix[3] = 1.0; // x = 1 — stored at 1000 ms
+        let mut pose_b = Transform4x4::identity();
+        pose_b.matrix[3] = 2.0; // x = 2 — stored at 1200 ms
+        buf.push(1_000_000, pose_a);
+        buf.push(1_200_000, pose_b);
+        // Query at 1150 ms: delta_a=150 ms, delta_b=50 ms → pose_b is closer
+        let result = buf.pose_at(1_150_000).unwrap();
+        assert_eq!(result.matrix[3], 2.0, "should select the closer pose");
+    }
+
+    #[test]
+    fn capacity_one_overwrites_on_second_push() {
+        let mut buf = PoseBuffer::new(1, 200_000);
+        buf.push(1_000_000, identity());
+        assert!(buf.pose_at(1_000_000).is_some());
+        buf.push(2_000_000, identity());
+        assert!(buf.pose_at(1_000_000).is_none(), "overwritten entry must be gone");
+        assert!(buf.pose_at(2_000_000).is_some());
+    }
+
+    #[test]
+    fn single_entry_tolerance_boundary() {
+        let mut buf = PoseBuffer::new(16, 100_000);
+        buf.push(1_000_000, identity());
+        assert!(buf.pose_at(950_000).is_some(),  "50 ms before — within tolerance");
+        assert!(buf.pose_at(1_050_000).is_some(), "50 ms after — within tolerance");
+        assert!(buf.pose_at(1_200_000).is_none(), "200 ms after — outside tolerance");
     }
 }

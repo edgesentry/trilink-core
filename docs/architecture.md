@@ -82,7 +82,7 @@ Given a detection bounding box `(u0, v0, u1, v1)`:
 center_u = (u0 + u1) / 2
 center_v = (v0 + v1) / 2
 
-P_camera = (1/depth_m) · K⁻¹ · [center_u, center_v, 1]ᵀ · depth_m
+P_camera = K⁻¹ · [center_u, center_v, 1]ᵀ · depth_m
          = [(center_u - cx) / fx · depth_m,
             (center_v - cy) / fy · depth_m,
             depth_m]
