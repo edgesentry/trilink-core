@@ -65,7 +65,9 @@ impl PoseBuffer {
 
         let mut best: Option<(u64, Transform4x4)> = None;
         for seg in [seg_a, seg_b] {
-            let idx = seg.partition_point(|e| e.ts_us <= capture_ts_us);
+            // lower_bound: idx is the first entry with ts_us >= capture_ts_us.
+            // Exact match lands at idx; nearest-before lands at idx-1.
+            let idx = seg.partition_point(|e| e.ts_us < capture_ts_us);
             for &i in &[idx.wrapping_sub(1), idx] {
                 if let Some(e) = seg.get(i) {
                     let delta = e.ts_us.abs_diff(capture_ts_us);
