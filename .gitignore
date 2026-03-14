@@ -4,3 +4,4 @@ reports/
 frames/
 damage.db
 *.jsonl
+.DS_Store
