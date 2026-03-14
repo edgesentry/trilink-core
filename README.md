@@ -4,6 +4,18 @@ Open-source Rust library for sensor-vision spatial fusion.
 
 `trilink-core` provides the building blocks for mapping AI image detections to 3D world coordinates using a moving sensor platform's pose stream. It is domain-agnostic — the same pipeline applies to any problem where you need to answer: *"Where exactly in a real-world space is this thing I detected in an image?"*
 
+## Name
+
+"Tri-Link" refers to the three coordinate spaces the library links together:
+
+```
+Image space  →  Camera space  →  World space
+ (pixels)        (metres,          (metres,
+                  camera-centred)   map-centred)
+```
+
+It also reflects the three systems it connects — sensor platform, inference service, and application — and the two gaps it bridges between them: the **time gap** (inference latency vs. platform motion) and the **space gap** (pixel coordinates vs. 3D world coordinates).
+
 ## What's in the crate
 
 | Module | What it does |

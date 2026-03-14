@@ -3,7 +3,7 @@ name        = "trilink-core"
 version     = "0.1.0"
 edition     = "2021"
 license     = "MIT OR Apache-2.0"
-description = "Open-source core: pose buffer, unprojection math, and shared types for robot-vision integration"
+description = "Open-source core: pose buffer, unprojection math, and shared types for sensor-vision spatial fusion"
 
 [lib]
 name = "trilink_core"
@@ -16,7 +16,7 @@ sqlite  = ["rusqlite"]
 [dependencies]
 serde      = { version = "1", features = ["derive"] }
 thiserror  = "2"
-rusqlite   = { version = "0.31", optional = true }
+rusqlite   = { version = "0.31", optional = true, features = ["bundled"] }
 
 [dev-dependencies]
 serde_json = "1"
