@@ -1,18 +1,18 @@
 # trilink-core
 
-Open-source Rust library for robot-vision spatial fusion.
+Open-source Rust library for sensor-vision spatial fusion.
 
-`trilink-core` provides the building blocks for mapping AI image detections to 3D world coordinates using a patrol robot's pose stream. It is domain-agnostic — vehicle damage detection is one application, but the same pipeline applies to any problem where you need to answer: *"Where exactly in a real-world space is this thing I detected in an image?"*
+`trilink-core` provides the building blocks for mapping AI image detections to 3D world coordinates using a moving sensor platform's pose stream. It is domain-agnostic — the same pipeline applies to any problem where you need to answer: *"Where exactly in a real-world space is this thing I detected in an image?"*
 
 ## What's in the crate
 
 | Module | What it does |
 |---|---|
-| `buffer::PoseBuffer` | Ring buffer of robot poses indexed by timestamp. O(log n) lookup by `capture_ts_us`. |
+| `buffer::PoseBuffer` | Ring buffer of platform poses indexed by timestamp. O(log n) lookup by `capture_ts_us`. |
 | `bridge::unproject` | Pinhole unprojection: pixel `(u, v)` + depth → camera space → world `(X, Y, Z)`. |
-| `ingress::RobotSource` | Trait for streaming robot frames (implement for your hardware). |
+| `ingress::FrameSource` | Trait for streaming sensor frames (implement for your hardware). |
 | `ingress::MockSource` | Deterministic frame source for testing, no hardware required. |
-| Core types | `InspectionPacket`, `Detection`, `BBox2D`, `Transform4x4`, `CameraIntrinsics`, `Point3D` |
+| Core types | `FusionPacket`, `Detection`, `BBox2D`, `Transform4x4`, `CameraIntrinsics`, `Point3D` |
 | `TriError` | Unified error type (`thiserror`). |
 
 ## Usage
@@ -24,17 +24,17 @@ Add to your `Cargo.toml`:
 trilink-core = { git = "https://github.com/edgesentry/tri-link-core.git", branch = "main" }
 ```
 
-### Implement `RobotSource` for your hardware
+### Implement `FrameSource` for your hardware
 
 ```rust
-use trilink_core::ingress::{RobotSource, RobotFrame};
+use trilink_core::ingress::{FrameSource, SensorFrame};
 use trilink_core::TriError;
 
-struct MyRobot { /* ... */ }
+struct MyPlatform { /* ... */ }
 
-impl RobotSource for MyRobot {
-    fn next_frame(&mut self) -> Result<RobotFrame, TriError> {
-        // pull pose + image from your robot SDK
+impl FrameSource for MyPlatform {
+    fn next_frame(&mut self) -> Result<SensorFrame, TriError> {
+        // pull pose + image from your platform SDK
         todo!()
     }
 }
@@ -50,7 +50,7 @@ buf.push(capture_ts_us, pose);
 
 // later, after inference returns input_ts:
 if let Some(pose) = buf.pose_at(input_ts) {
-    // pose is the robot's position at shutter time, not inference completion time
+    // pose is the platform's position at shutter time, not inference completion time
 }
 ```
 
@@ -66,7 +66,7 @@ let world_pos = unproject(
     &intrinsics,
     &pose,
 );
-// world_pos: Point3D { x, y, z } in the robot's world frame
+// world_pos: Point3D { x, y, z } in the platform's world frame
 ```
 
 ## Features

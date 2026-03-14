@@ -1,11 +1,11 @@
-use super::{RobotFrame, RobotSource};
+use super::{FrameSource, SensorFrame};
 use crate::{Transform4x4, error::TriError};
 
-/// Deterministic robot source for testing.
+/// Deterministic frame source for testing.
 ///
 /// Produces frames at a fixed interval with:
 /// - Monotonically increasing timestamps starting at `base_ts_us`
-/// - A sine-wave Z-rotation pose to simulate robot turning
+/// - A sine-wave Z-rotation pose to simulate a platform turning
 /// - A 1×1 pixel white JPEG (minimal valid JPEG)
 /// - A fixed ToF depth
 pub struct MockSource {
@@ -79,8 +79,8 @@ impl MockSource {
     }
 }
 
-impl RobotSource for MockSource {
-    fn next_frame(&mut self) -> Result<RobotFrame, TriError> {
+impl FrameSource for MockSource {
+    fn next_frame(&mut self) -> Result<SensorFrame, TriError> {
         if let Some(limit) = self.limit {
             if self.frame_index >= limit {
                 return Err(TriError::Io(std::io::Error::new(
@@ -94,7 +94,7 @@ impl RobotSource for MockSource {
         let pose = Self::make_pose(self.frame_index);
         self.frame_index += 1;
 
-        Ok(RobotFrame {
+        Ok(SensorFrame {
             capture_ts_us,
             pose,
             jpeg: Self::blank_jpeg(),

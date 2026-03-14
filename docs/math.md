@@ -23,7 +23,7 @@ Image space          Camera space         World space
 
 **Camera space** — a 3D coordinate system centred on the camera lens. The Z axis points straight ahead (into the scene). X points right, Y points down. Units are metres. A point at `(Xc, Yc, Zc)` is `Zc` metres in front of the camera.
 
-**World space** — the global 3D coordinate system established by the robot's SLAM map. This is what the customer sees when they open the 3D model. A damage record's `world_pos` is in this frame.
+**World space** — the global 3D coordinate system established by the platform's SLAM map. A `Detection`'s `world_pos` is in this frame.
 
 ---
 
@@ -70,7 +70,7 @@ K = [ fx   0   cx ]
 
 **Intuition:** `fx` and `fy` control how strongly perspective compresses depth into pixels. Larger values = more telephoto (distant objects appear larger). `cx`, `cy` describe where the lens optical axis hits the sensor — ideally the image centre, but rarely exactly so after manufacturing.
 
-These values come from the robot platform's calibration and are loaded from `config.toml` at startup. They do not change during a patrol.
+These values come from the sensor platform's calibration. They do not change during a session.
 
 ---
 
@@ -130,7 +130,7 @@ K⁻¹ = [ 1/fx    0   -cx/fx ]
 
 ## Pose Transform (Camera → World)
 
-The robot's pose `T` is a 4×4 homogeneous matrix that expresses the camera's position and orientation in world space. It is recorded at the exact moment the shutter opens.
+The platform's pose `T` is a 4×4 homogeneous matrix that expresses the camera's position and orientation in world space. It is recorded at the exact moment the shutter opens.
 
 To convert a camera-space point to world space:
 
@@ -168,7 +168,7 @@ This is exactly what `bridge/unproject.rs` implements.
 
 ## The Pose Buffer and Timestamp Lookup
 
-The pose `T` used in step 4 above must be the pose at the moment the image was captured — not the current robot pose. This is what `PoseBuffer` handles.
+The pose `T` used in step 4 above must be the pose at the moment the image was captured — not the current platform pose. This is what `PoseBuffer` handles.
 
 The buffer stores a time series of `(timestamp_us, Transform4x4)` pairs. When a lookup is requested for `capture_ts_us`, the buffer finds the entry whose timestamp is closest, provided it falls within a tolerance window (default 200 ms).
 
@@ -184,7 +184,7 @@ query: pose_at(1050)
   → if delta > tolerance_us → return None
 ```
 
-**Why this matters:** At 1 m/s robot speed, a 100 ms pose error = 10 cm position error in the damage map. Using the captured pose instead of the current pose removes this error entirely.
+**Why this matters:** At 1 m/s platform speed, a 100 ms pose error = 10 cm position error. Using the captured pose instead of the current pose removes this error entirely.
 
 ---
 

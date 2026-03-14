@@ -4,14 +4,14 @@
 
 Two independent systems produce complementary data about the physical world, but neither can answer the question that matters: *where exactly in 3D space is this thing I detected?*
 
-- The **robot platform** moves through a space and continuously streams its pose (position + orientation) along with camera images and optional depth measurements. It knows *where* the robot is but does not classify what it sees.
+- The **sensor platform** moves through a space and continuously streams its pose (position + orientation) along with camera images and optional depth measurements. It knows *where* the platform is but does not classify what it sees.
 - The **AI inference service** receives a JPEG and returns bounding boxes with labels. It knows *what* was detected but has no spatial context.
 
 There are two fundamental gaps to bridge:
 
-1. **Time gap** — The inference service takes ~100 ms to respond. The robot is moving. By the time the result arrives, the robot has moved ~10 cm at normal patrol speed. Using the robot's *current* pose when the result arrives produces a wrong location.
+1. **Time gap** — The inference service takes ~100 ms to respond. The platform is moving. By the time the result arrives, it may have moved ~10 cm. Using the platform's *current* pose when the result arrives produces a wrong location.
 
-2. **Space gap** — The inference service returns pixel coordinates `(u, v)`. Converting those to world coordinates `(X, Y, Z)` requires the camera's optical parameters and the robot's pose at the exact moment the shutter opened.
+2. **Space gap** — The inference service returns pixel coordinates `(u, v)`. Converting those to world coordinates `(X, Y, Z)` requires the camera's optical parameters and the platform's pose at the exact moment the shutter opened.
 
 `trilink-core` resolves both gaps.
 
@@ -20,8 +20,8 @@ There are two fundamental gaps to bridge:
 ## Data Flow
 
 ```
-Robot Platform                  Application layer               Inference Service
-──────────────                  ─────────────────               ─────────────────
+Sensor Platform                 Application layer               Inference Service
+───────────────                 ─────────────────               ─────────────────
 
 pose stream ──────────────────► PoseBuffer
                                 (ring buffer, 1000 entries)
@@ -44,7 +44,7 @@ The application layer (not part of this crate) is responsible for the HTTP clien
 
 | Module | Responsibility |
 |---|---|
-| `ingress/` | `RobotSource` trait for streaming frames; `MockSource` for testing |
+| `ingress/` | `FrameSource` trait for streaming frames; `MockSource` for testing |
 | `buffer/` | `PoseBuffer` — ring buffer of poses indexed by timestamp; O(log n) lookup |
 | `bridge/unproject.rs` | Pinhole unprojection: pixel + depth → camera space → world space |
 | `error.rs` | `TriError` — unified error type |
@@ -53,7 +53,7 @@ The application layer (not part of this crate) is responsible for the HTTP clien
 
 ## Temporal Synchronisation
 
-Every robot frame carries a `capture_ts_us` — the UNIX timestamp in microseconds when the camera shutter opened. This value is forwarded to the inference service. The inference service echoes it back as `input_ts` in the response.
+Every sensor frame carries a `capture_ts_us` — the UNIX timestamp in microseconds when the camera shutter opened. This value is forwarded to the inference service. The inference service echoes it back as `input_ts` in the response.
 
 When the response arrives:
 
@@ -91,16 +91,16 @@ If depth is unavailable, a configurable fallback distance is used (default 2.0 m
 ## Core Data Structures
 
 ```rust
-pub struct InspectionPacket {
+pub struct FusionPacket {
     pub capture_ts_us: u64,         // shutter timestamp (µs since UNIX epoch)
-    pub pose: Transform4x4,         // robot pose at capture_ts_us
+    pub pose: Transform4x4,         // platform pose at capture_ts_us
     pub camera_k: CameraIntrinsics,
     pub image_jpeg: Vec<u8>,
     pub detections: Vec<Detection>,
 }
 
 pub struct Detection {
-    pub class: String,              // e.g. "scratch", "dent", "crack"
+    pub class: String,              // inference label, e.g. "person", "crack", "vehicle"
     pub confidence: f32,
     pub bbox: BBox2D,
     pub world_pos: Option<Point3D>, // None until unprojection resolves it
