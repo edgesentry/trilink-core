@@ -31,7 +31,24 @@ impl PoseBuffer {
     }
 
     /// Insert a pose with its capture timestamp.
+    ///
+    /// # Panics (debug builds only)
+    /// Asserts that `ts_us` is strictly greater than the previously pushed
+    /// timestamp. The binary search in [`Self::pose_at`] relies on
+    /// monotonically increasing timestamps; out-of-order pushes would cause
+    /// silent incorrect lookups in release builds.
     pub fn push(&mut self, ts_us: u64, pose: Transform4x4) {
+        if self.len > 0 {
+            // The last-pushed entry sits at (head + len - 1) % capacity,
+            // which is correct for both the growing phase and the ring phase.
+            let last_idx = (self.head + self.len - 1) % self.capacity;
+            debug_assert!(
+                ts_us > self.entries[last_idx].ts_us,
+                "PoseBuffer::push: timestamps must be strictly increasing \
+                 (got {ts_us}, last was {})",
+                self.entries[last_idx].ts_us,
+            );
+        }
         let entry = Entry { ts_us, pose };
         if self.len < self.capacity {
             self.entries.push(entry);
@@ -156,6 +173,24 @@ mod tests {
         buf.push(2_000_000, identity());
         assert!(buf.pose_at(1_000_000).is_none(), "overwritten entry must be gone");
         assert!(buf.pose_at(2_000_000).is_some());
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "timestamps must be strictly increasing")]
+    fn out_of_order_push_panics_in_debug() {
+        let mut buf = PoseBuffer::new(16, 200_000);
+        buf.push(2_000_000, identity());
+        buf.push(1_000_000, identity()); // older timestamp — must panic
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "timestamps must be strictly increasing")]
+    fn equal_timestamp_push_panics_in_debug() {
+        let mut buf = PoseBuffer::new(16, 200_000);
+        buf.push(1_000_000, identity());
+        buf.push(1_000_000, identity()); // same timestamp — must panic
     }
 
     #[test]
