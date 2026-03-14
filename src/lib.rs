@@ -69,8 +69,8 @@ impl Transform4x4 {
     pub fn transform_point(&self, xc: f64, yc: f64, zc: f64) -> Point3D {
         let m = &self.matrix;
         Point3D {
-            x: (m[0] as f64 * xc + m[1] as f64 * yc + m[2]  as f64 * zc + m[3]  as f64) as f32,
-            y: (m[4] as f64 * xc + m[5] as f64 * yc + m[6]  as f64 * zc + m[7]  as f64) as f32,
+            x: (m[0] as f64 * xc + m[1] as f64 * yc + m[2] as f64 * zc + m[3] as f64) as f32,
+            y: (m[4] as f64 * xc + m[5] as f64 * yc + m[6] as f64 * zc + m[7] as f64) as f32,
             z: (m[8] as f64 * xc + m[9] as f64 * yc + m[10] as f64 * zc + m[11] as f64) as f32,
         }
     }
