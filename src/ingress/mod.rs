@@ -2,12 +2,12 @@ pub mod mock;
 
 use crate::{Transform4x4, error::TriError};
 
-/// A frame emitted by the robot platform: raw JPEG + pose at shutter time.
+/// A frame emitted by a sensor platform: raw JPEG + pose at shutter time.
 #[derive(Debug, Clone)]
-pub struct RobotFrame {
+pub struct SensorFrame {
     /// Microseconds since UNIX epoch when the shutter opened.
     pub capture_ts_us: u64,
-    /// Robot pose at shutter time from the SLAM subsystem.
+    /// Platform pose at shutter time from the localisation subsystem.
     pub pose: Transform4x4,
     /// JPEG-encoded image bytes.
     pub jpeg: Vec<u8>,
@@ -15,8 +15,8 @@ pub struct RobotFrame {
     pub depth_m: Option<f32>,
 }
 
-/// Trait implemented by any source of robot frames (real hardware or mock).
-pub trait RobotSource: Send {
+/// Trait implemented by any source of sensor frames (real hardware or mock).
+pub trait FrameSource: Send {
     /// Returns the next available frame, blocking until one is ready.
-    fn next_frame(&mut self) -> Result<RobotFrame, TriError>;
+    fn next_frame(&mut self) -> Result<SensorFrame, TriError>;
 }

@@ -5,12 +5,12 @@ pub mod ingress;
 
 pub use error::TriError;
 
-/// Unified output: one damage event with full spatial context.
+/// One complete detection event: image capture with pose, intrinsics, and inference results.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct InspectionPacket {
+pub struct FusionPacket {
     /// Image capture time (microseconds since UNIX epoch).
     pub capture_ts_us: u64,
-    /// Robot pose at `capture_ts_us`, looked up from the pose buffer.
+    /// Platform pose at `capture_ts_us`, looked up from the pose buffer.
     pub pose: Transform4x4,
     /// Static camera calibration parameters.
     pub camera_k: CameraIntrinsics,
@@ -20,10 +20,10 @@ pub struct InspectionPacket {
     pub detections: Vec<Detection>,
 }
 
-/// A single damage detection with optional world-space location.
+/// A single object detection with optional world-space location.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Detection {
-    /// Damage class label (e.g. `"scratch"`, `"dent"`, `"crack"`).
+    /// Class label returned by the inference service (e.g. `"person"`, `"crack"`, `"vehicle"`).
     pub class: String,
     pub confidence: f32,
     /// Pixel-space bounding box from the inference service.
@@ -43,14 +43,14 @@ pub struct CameraIntrinsics {
     pub cy: f64,
 }
 
-/// Row-major homogeneous 4×4 transform (robot pose in world frame).
+/// Row-major homogeneous 4×4 transform (platform pose in world frame).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Transform4x4 {
     pub matrix: [f32; 16],
 }
 
 impl Transform4x4 {
-    /// Identity transform — robot at origin, no rotation.
+    /// Identity transform — platform at origin, no rotation.
     pub fn identity() -> Self {
         #[rustfmt::skip]
         let m = [
@@ -141,8 +141,8 @@ mod tests {
     // --- Serde roundtrips ---
 
     #[test]
-    fn inspection_packet_roundtrip() {
-        let packet = InspectionPacket {
+    fn fusion_packet_roundtrip() {
+        let packet = FusionPacket {
             capture_ts_us: 42_000_000,
             pose: Transform4x4::identity(),
             camera_k: CameraIntrinsics { fx: 800.0, fy: 800.0, cx: 960.0, cy: 540.0 },
@@ -156,7 +156,7 @@ mod tests {
             }],
         };
         let json = serde_json::to_string(&packet).unwrap();
-        let decoded: InspectionPacket = serde_json::from_str(&json).unwrap();
+        let decoded: FusionPacket = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.capture_ts_us, 42_000_000);
         assert_eq!(decoded.detections.len(), 1);
         assert_eq!(decoded.detections[0].class, "scratch");
