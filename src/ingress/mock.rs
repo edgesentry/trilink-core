@@ -47,7 +47,7 @@ impl MockSource {
         Transform4x4 { matrix }
     }
 
-    /// Minimal valid 1×1 white JPEG (24 bytes).
+    /// Minimal valid 1×1 white JPEG (208 bytes).
     fn blank_jpeg() -> Vec<u8> {
         // A 1x1 white pixel JPEG generated offline and embedded as bytes.
         vec![
