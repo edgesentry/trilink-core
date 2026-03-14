@@ -16,7 +16,14 @@ pub struct SensorFrame {
 }
 
 /// Trait implemented by any source of sensor frames (real hardware or mock).
+///
+/// `next_frame` is `async` so implementations can await hardware SDKs or
+/// network streams without blocking a tokio worker thread.
+///
+/// Note: `async fn` in traits is not yet object-safe (`dyn FrameSource` is
+/// not supported). Use a concrete type or a newtype wrapper if dynamic
+/// dispatch is needed.
 pub trait FrameSource: Send {
-    /// Returns the next available frame, blocking until one is ready.
-    fn next_frame(&mut self) -> Result<SensorFrame, TriError>;
+    /// Returns the next available frame, yielding until one is ready.
+    async fn next_frame(&mut self) -> Result<SensorFrame, TriError>;
 }
