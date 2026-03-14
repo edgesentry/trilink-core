@@ -61,6 +61,19 @@ impl Transform4x4 {
         ];
         Self { matrix: m }
     }
+
+    /// Apply this transform to a camera-space point, returning a world-space [`Point3D`].
+    ///
+    /// Computes `P_world = self · [xc, yc, zc, 1]ᵀ` using the top three rows of the
+    /// row-major 4×4 matrix (the homogeneous bottom row is not needed for affine transforms).
+    pub fn transform_point(&self, xc: f64, yc: f64, zc: f64) -> Point3D {
+        let m = &self.matrix;
+        Point3D {
+            x: (m[0] as f64 * xc + m[1] as f64 * yc + m[2]  as f64 * zc + m[3]  as f64) as f32,
+            y: (m[4] as f64 * xc + m[5] as f64 * yc + m[6]  as f64 * zc + m[7]  as f64) as f32,
+            z: (m[8] as f64 * xc + m[9] as f64 * yc + m[10] as f64 * zc + m[11] as f64) as f32,
+        }
+    }
 }
 
 /// 3D world-space point.
@@ -116,6 +129,32 @@ mod tests {
     fn bbox_center_degenerate_zero_size() {
         let bbox = BBox2D { u0: 5.0, v0: 7.0, u1: 5.0, v1: 7.0 };
         assert_eq!(bbox.center(), (5.0, 7.0));
+    }
+
+    // --- Transform4x4::transform_point ---
+
+    #[test]
+    fn transform_point_identity_returns_input() {
+        let p = Transform4x4::identity().transform_point(1.0, 2.0, 3.0);
+        assert!((p.x - 1.0).abs() < 1e-6);
+        assert!((p.y - 2.0).abs() < 1e-6);
+        assert!((p.z - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn transform_point_translation_offsets_correctly() {
+        // Translation-only matrix: identity rotation, tx=10, ty=20, tz=30
+        #[rustfmt::skip]
+        let t = Transform4x4 { matrix: [
+            1.0, 0.0, 0.0, 10.0,
+            0.0, 1.0, 0.0, 20.0,
+            0.0, 0.0, 1.0, 30.0,
+            0.0, 0.0, 0.0,  1.0,
+        ]};
+        let p = t.transform_point(1.0, 2.0, 3.0);
+        assert!((p.x - 11.0).abs() < 1e-5);
+        assert!((p.y - 22.0).abs() < 1e-5);
+        assert!((p.z - 33.0).abs() < 1e-5);
     }
 
     // --- Transform4x4::identity ---

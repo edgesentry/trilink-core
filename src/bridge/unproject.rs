@@ -30,13 +30,7 @@ pub fn unproject(
     let zc = d;
 
     // Step 4 — apply the 4×4 pose transform (row-major).
-    // P_world = pose · [xc, yc, zc, 1]ᵀ
-    let m = &pose.matrix;
-    let xw = m[0] as f64 * xc + m[1] as f64 * yc + m[2]  as f64 * zc + m[3]  as f64;
-    let yw = m[4] as f64 * xc + m[5] as f64 * yc + m[6]  as f64 * zc + m[7]  as f64;
-    let zw = m[8] as f64 * xc + m[9] as f64 * yc + m[10] as f64 * zc + m[11] as f64;
-
-    Point3D { x: xw as f32, y: yw as f32, z: zw as f32 }
+    pose.transform_point(xc, yc, zc)
 }
 
 #[cfg(test)]
