@@ -4,100 +4,158 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
   RUST_BACKTRACE: 1
 
 jobs:
   build_and_test:
     name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        run: rustup update stable && rustup default stable
 
-      - name: Cache cargo registry
+      - name: Cache Rust artifacts
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build workspace
-        run: cargo build --workspace
+      - name: Build
+        run: cargo build
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test
 
       - name: Run tests with sqlite feature
-        run: cargo test --workspace --features sqlite
+        run: cargo test --features sqlite
 
   license_check:
-    name: License Check
+    name: OSS License Check
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    permissions:
+      contents: read
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: rustup update stable && rustup default stable
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny
+        run: cargo deny --version 2>/dev/null || cargo install cargo-deny --locked
 
       - name: Check licenses
         run: cargo deny check licenses
 
   audit:
-    name: Security Audit
+    name: Security Audit (cargo-audit)
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    permissions:
+      contents: read
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: rustup update stable && rustup default stable
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
+        run: cargo audit --version 2>/dev/null || cargo install cargo-audit --locked
 
-      - name: Run audit
+      - name: Run security audit
         run: cargo audit
 
   sast:
-    name: Static Analysis
+    name: SAST (Clippy + cargo-deny advisories)
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    permissions:
+      contents: read
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: rustup update stable && rustup default stable
+
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
         with:
-          components: clippy
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny
+        run: cargo deny --version 2>/dev/null || cargo install cargo-deny --locked
 
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-      - name: cargo deny advisories
+      - name: Deny vulnerable advisories
         run: cargo deny check advisories
 
-      - name: cargo deny bans and sources
+      - name: Deny policy violations (bans + sources)
         run: cargo deny check bans sources
+
+  release_readiness:
+    name: Release Readiness (dry-run)
+    runs-on: ubuntu-latest
+    needs: [build_and_test, license_check, audit, sast]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: rustup update stable && rustup default stable
+
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Publish dry-run
+        run: cargo publish --dry-run --locked
