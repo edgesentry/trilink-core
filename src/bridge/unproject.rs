@@ -56,7 +56,7 @@ mod tests {
         CameraIntrinsics { fx: 800.0, fy: 800.0, cx: 960.0, cy: 540.0 }
     }
 
-    fn bbox(u0: u32, v0: u32, u1: u32, v1: u32) -> BBox2D {
+    fn bbox(u0: f32, v0: f32, u1: f32, v1: f32) -> BBox2D {
         BBox2D { u0, v0, u1, v1 }
     }
 
@@ -67,7 +67,7 @@ mod tests {
         //   bbox centre = (2.0, 3.0)
         //   P_camera = (2.0·d, 3.0·d, d)
         //   P_world  = P_camera  (identity transform)
-        let p = unproject(&bbox(0, 0, 4, 6), None, 1.0, &k_simple(), &identity());
+        let p = unproject(&bbox(0.0, 0.0, 4.0, 6.0), None, 1.0, &k_simple(), &identity());
         assert!((p.x - 2.0).abs() < 1e-5);
         assert!((p.y - 3.0).abs() < 1e-5);
         assert!((p.z - 1.0).abs() < 1e-5);
@@ -76,8 +76,8 @@ mod tests {
     // Depth scales world coordinate proportionally.
     #[test]
     fn depth_scales_world_coordinate() {
-        let p1 = unproject(&bbox(0, 0, 4, 6), Some(1.0), 1.0, &k_simple(), &identity());
-        let p2 = unproject(&bbox(0, 0, 4, 6), Some(2.0), 1.0, &k_simple(), &identity());
+        let p1 = unproject(&bbox(0.0, 0.0, 4.0, 6.0), Some(1.0), 1.0, &k_simple(), &identity());
+        let p2 = unproject(&bbox(0.0, 0.0, 4.0, 6.0), Some(2.0), 1.0, &k_simple(), &identity());
         assert!((p2.x - 2.0 * p1.x).abs() < 1e-4);
         assert!((p2.y - 2.0 * p1.y).abs() < 1e-4);
         assert!((p2.z - 2.0 * p1.z).abs() < 1e-4);
@@ -89,7 +89,7 @@ mod tests {
         // With k_standard (fx=fy=800, cx=960, cy=540) and a zero-size bbox at (0,0):
         //   u=0, v=0 → x_norm=(0-960)/800=-1.2, y_norm=(0-540)/800=-0.675
         //   at d=1: P_camera=(-1.2, -0.675, 1.0)
-        let p = unproject(&bbox(0, 0, 0, 0), Some(1.0), 1.0, &k_standard(), &identity());
+        let p = unproject(&bbox(0.0, 0.0, 0.0, 0.0), Some(1.0), 1.0, &k_standard(), &identity());
         assert!((p.x - (-1.2_f32)).abs() < 1e-4);
         assert!((p.y - (-0.675_f32)).abs() < 1e-4);
         assert!((p.z - 1.0_f32).abs() < 1e-4);
@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn fallback_depth_produces_result() {
         // depth_m = None → must use fallback_depth_m = 3.0
-        let p = unproject(&bbox(0, 0, 4, 6), None, 3.0, &k_simple(), &identity());
+        let p = unproject(&bbox(0.0, 0.0, 4.0, 6.0), None, 3.0, &k_simple(), &identity());
         assert!((p.z - 3.0).abs() < 1e-4);
     }
 
@@ -113,7 +113,7 @@ mod tests {
         // cx=960, cy=540 (1080p), depth=2.0 m (assumptions.md default fallback)
         // u=cx, v=cy → x_norm=0, y_norm=0 → P_camera=(0, 0, 2)
         // identity pose → P_world=(0, 0, 2)
-        let p = unproject(&bbox(960, 540, 960, 540), Some(2.0), 2.0, &k_standard(), &identity());
+        let p = unproject(&bbox(960.0, 540.0, 960.0, 540.0), Some(2.0), 2.0, &k_standard(), &identity());
         assert!(p.x.abs() < 1e-4, "x should be 0 at principal point");
         assert!(p.y.abs() < 1e-4, "y should be 0 at principal point");
         assert!((p.z - 2.0).abs() < 1e-4);
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn default_fallback_depth_is_2m() {
         // principal point, identity → z must equal the fallback
-        let p = unproject(&bbox(960, 540, 960, 540), None, 2.0, &k_standard(), &identity());
+        let p = unproject(&bbox(960.0, 540.0, 960.0, 540.0), None, 2.0, &k_standard(), &identity());
         assert!((p.z - 2.0).abs() < 1e-4, "z should equal fallback depth 2.0 m");
     }
 
@@ -132,13 +132,13 @@ mod tests {
     // Verify both extremes produce correct z output.
     #[test]
     fn depth_range_minimum_0_5m() {
-        let p = unproject(&bbox(960, 540, 960, 540), Some(0.5), 2.0, &k_standard(), &identity());
+        let p = unproject(&bbox(960.0, 540.0, 960.0, 540.0), Some(0.5), 2.0, &k_standard(), &identity());
         assert!((p.z - 0.5).abs() < 1e-4);
     }
 
     #[test]
     fn depth_range_maximum_5m() {
-        let p = unproject(&bbox(960, 540, 960, 540), Some(5.0), 2.0, &k_standard(), &identity());
+        let p = unproject(&bbox(960.0, 540.0, 960.0, 540.0), Some(5.0), 2.0, &k_standard(), &identity());
         assert!((p.z - 5.0).abs() < 1e-4);
     }
 
@@ -155,7 +155,7 @@ mod tests {
             0.0, 0.0, 1.0, 3.0,   // row 2: tz = 3.0
             0.0, 0.0, 0.0, 1.0,
         ]};
-        let p = unproject(&bbox(960, 540, 960, 540), Some(2.0), 2.0, &k_standard(), &pose);
+        let p = unproject(&bbox(960.0, 540.0, 960.0, 540.0), Some(2.0), 2.0, &k_standard(), &pose);
         assert!((p.x - 1.0).abs() < 1e-4, "world x should include robot translation");
         assert!(p.y.abs() < 1e-4);
         assert!((p.z - 5.0).abs() < 1e-4, "world z = robot_tz + camera_zc");
@@ -169,7 +169,7 @@ mod tests {
         // u = cx + fx = 960 + 800 = 1760, v = cy = 540
         // x_norm = (1760 - 960) / 800 = 1.0, y_norm = 0
         // at d=2.0: P_camera=(2.0, 0, 2.0) → P_world same with identity
-        let p = unproject(&bbox(1760, 540, 1760, 540), Some(2.0), 2.0, &k_standard(), &identity());
+        let p = unproject(&bbox(1760.0, 540.0, 1760.0, 540.0), Some(2.0), 2.0, &k_standard(), &identity());
         assert!((p.x - 2.0).abs() < 1e-3, "Xc should equal Zc at ±45° (x_norm=1)");
         assert!(p.y.abs() < 1e-3);
         assert!((p.z - 2.0).abs() < 1e-3);
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn arithmetic_error_is_sub_millimetre() {
         // Typical vehicle side-scan: fx=800, d=2.0, detection at image centre.
-        let p = unproject(&bbox(960, 540, 960, 540), Some(2.0), 2.0, &k_standard(), &identity());
+        let p = unproject(&bbox(960.0, 540.0, 960.0, 540.0), Some(2.0), 2.0, &k_standard(), &identity());
         assert!(p.x.abs() < 0.001, "float error in x must be < 1 mm");
         assert!(p.y.abs() < 0.001, "float error in y must be < 1 mm");
         assert!((p.z - 2.0).abs() < 0.001, "float error in z must be < 1 mm");

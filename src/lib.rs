@@ -72,12 +72,15 @@ pub struct Point3D {
 }
 
 /// Pixel-space bounding box (inclusive min, exclusive max convention).
+///
+/// Fields are `f32` to accept both integer pixel coords and sub-pixel float
+/// coords returned by most inference APIs (e.g. YOLO-style services).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct BBox2D {
-    pub u0: u32,
-    pub v0: u32,
-    pub u1: u32,
-    pub v1: u32,
+    pub u0: f32,
+    pub v0: f32,
+    pub u1: f32,
+    pub v1: f32,
 }
 
 impl BBox2D {
@@ -98,20 +101,20 @@ mod tests {
 
     #[test]
     fn bbox_center_symmetric() {
-        let bbox = BBox2D { u0: 10, v0: 20, u1: 30, v1: 40 };
+        let bbox = BBox2D { u0: 10.0, v0: 20.0, u1: 30.0, v1: 40.0 };
         assert_eq!(bbox.center(), (20.0, 30.0));
     }
 
     #[test]
     fn bbox_center_fractional() {
         // Odd-width box: centre falls on a half-pixel
-        let bbox = BBox2D { u0: 0, v0: 0, u1: 1, v1: 3 };
+        let bbox = BBox2D { u0: 0.0, v0: 0.0, u1: 1.0, v1: 3.0 };
         assert_eq!(bbox.center(), (0.5, 1.5));
     }
 
     #[test]
     fn bbox_center_degenerate_zero_size() {
-        let bbox = BBox2D { u0: 5, v0: 7, u1: 5, v1: 7 };
+        let bbox = BBox2D { u0: 5.0, v0: 7.0, u1: 5.0, v1: 7.0 };
         assert_eq!(bbox.center(), (5.0, 7.0));
     }
 
@@ -150,7 +153,7 @@ mod tests {
             detections: vec![Detection {
                 class: "scratch".to_string(),
                 confidence: 0.92,
-                bbox: BBox2D { u0: 100, v0: 200, u1: 150, v1: 250 },
+                bbox: BBox2D { u0: 100.0, v0: 200.0, u1: 150.0, v1: 250.0 },
                 world_pos: Some(Point3D { x: 1.0, y: 2.0, z: 3.0 }),
                 depth_m: Some(2.5),
             }],
@@ -172,7 +175,7 @@ mod tests {
         let d = Detection {
             class: "dent".to_string(),
             confidence: 0.75,
-            bbox: BBox2D { u0: 0, v0: 0, u1: 10, v1: 10 },
+            bbox: BBox2D { u0: 0.0, v0: 0.0, u1: 10.0, v1: 10.0 },
             world_pos: None,
             depth_m: None,
         };
