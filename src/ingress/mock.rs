@@ -17,14 +17,21 @@ pub struct MockSource {
 }
 
 impl MockSource {
-    pub fn new(base_ts_us: u64, fps: u32, depth_m: f32) -> Self {
-        Self {
+    pub fn new(base_ts_us: u64, fps: u32, depth_m: f32) -> Result<Self, TriError> {
+        if fps == 0 {
+            return Err(TriError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "MockSource fps must be greater than 0",
+            )));
+        }
+
+        Ok(Self {
             base_ts_us,
             step_us: 1_000_000 / fps as u64,
             depth_m,
             frame_index: 0,
             limit: None,
-        }
+        })
     }
 
     /// Stop after `n` frames (useful in tests).
