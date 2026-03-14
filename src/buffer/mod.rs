@@ -42,31 +42,36 @@ impl PoseBuffer {
         }
     }
 
-    /// Returns a sorted slice view (by ts_us) for binary search.
-    fn sorted_entries(&self) -> Vec<Entry> {
-        let mut v: Vec<Entry> = self.entries[..self.len].to_vec();
-        v.sort_by_key(|e| e.ts_us);
-        v
-    }
-
-    /// Look up the robot pose at `capture_ts_us`.
+    /// Look up the pose closest to `capture_ts_us`.
     ///
     /// Returns `None` if no entry is within `tolerance_us` of the requested
     /// timestamp.
+    ///
+    /// # Complexity
+    /// O(log n) — binary-searches each of the two sorted ring-buffer segments
+    /// with no heap allocation on the hot path.
     pub fn pose_at(&self, capture_ts_us: u64) -> Option<Transform4x4> {
         if self.len == 0 {
             return None;
         }
-        let sorted = self.sorted_entries();
-        let idx = sorted.partition_point(|e| e.ts_us <= capture_ts_us);
 
-        // Candidates: the entry just before and just after the target.
+        // The ring buffer stores entries in push order.  Because timestamps
+        // are monotonically increasing, both segments below are sorted:
+        //   seg_a: entries[head..len]  — older (lower ts)
+        //   seg_b: entries[0..head]    — newer (higher ts)
+        // Binary-search each segment independently and take the closest match.
+        let seg_a = &self.entries[self.head..self.len];
+        let seg_b = &self.entries[..self.head];
+
         let mut best: Option<(u64, Transform4x4)> = None;
-        for &i in &[idx.wrapping_sub(1), idx] {
-            if let Some(e) = sorted.get(i) {
-                let delta = e.ts_us.abs_diff(capture_ts_us);
-                if delta <= self.tolerance_us && best.is_none_or(|(d, _)| delta < d) {
-                    best = Some((delta, e.pose));
+        for seg in [seg_a, seg_b] {
+            let idx = seg.partition_point(|e| e.ts_us <= capture_ts_us);
+            for &i in &[idx.wrapping_sub(1), idx] {
+                if let Some(e) = seg.get(i) {
+                    let delta = e.ts_us.abs_diff(capture_ts_us);
+                    if delta <= self.tolerance_us && best.is_none_or(|(d, _)| delta < d) {
+                        best = Some((delta, e.pose));
+                    }
                 }
             }
         }
