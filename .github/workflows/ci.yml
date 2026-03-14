@@ -74,7 +74,7 @@ jobs:
         run: cargo deny --version 2>/dev/null || cargo install cargo-deny --locked
 
       - name: Check licenses
-        run: cargo deny check licenses --all-features
+        run: cargo deny --all-features check licenses
 
   audit:
     name: Security Audit (cargo-audit)
