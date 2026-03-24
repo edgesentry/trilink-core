@@ -36,15 +36,7 @@ impl MockSource {
     fn make_pose(frame_index: u64) -> Transform4x4 {
         // Rotate around Z axis: angle = frame_index * 0.1 rad
         let angle = (frame_index as f64 * 0.1) as f32;
-        let (s, c) = (angle.sin(), angle.cos());
-        #[rustfmt::skip]
-        let matrix = [
-            c, -s, 0.0, 0.0,
-            s,  c, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ];
-        Transform4x4 { matrix }
+        Transform4x4 { mat: glam::Mat4::from_rotation_z(angle) }
     }
 
     /// Minimal valid 1×1 white JPEG (208 bytes).
@@ -164,10 +156,11 @@ mod tests {
         // angle = 0 * 0.1 = 0 → cos=1, sin=0 → identity rotation
         let mut src = MockSource::new(0, 30, 1.0).with_limit(1);
         let frame = src.next_frame().await.unwrap();
-        let m = frame.pose.matrix;
-        assert!((m[0] - 1.0).abs() < 1e-6, "m[0,0] should be cos(0)=1");
-        assert!((m[1] - 0.0).abs() < 1e-6, "m[0,1] should be -sin(0)=0");
-        assert!((m[4] - 0.0).abs() < 1e-6, "m[1,0] should be sin(0)=0");
-        assert!((m[5] - 1.0).abs() < 1e-6, "m[1,1] should be cos(0)=1");
+        let mat = frame.pose.mat;
+        // x_axis is column 0: (cos, sin, 0, 0); y_axis is column 1: (-sin, cos, 0, 0)
+        assert!((mat.x_axis.x - 1.0).abs() < 1e-6, "m[0,0] should be cos(0)=1");
+        assert!((mat.y_axis.x - 0.0).abs() < 1e-6, "m[0,1] should be -sin(0)=0");
+        assert!((mat.x_axis.y - 0.0).abs() < 1e-6, "m[1,0] should be sin(0)=0");
+        assert!((mat.y_axis.y - 1.0).abs() < 1e-6, "m[1,1] should be cos(0)=1");
     }
 }

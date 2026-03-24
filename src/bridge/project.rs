@@ -10,9 +10,7 @@ use crate::{CameraIntrinsics, DepthMap, HeightMap, PointCloud, Transform4x4};
 /// - `height` — output image height in pixels
 ///
 /// # Math
-/// 1. **World → camera** (rigid-body inverse, no matrix inversion):
-///    `P_camera = Rᵀ · (P_world − t)` where `R` and `t` come from the top-left 3×3
-///    and last column of `pose`.
+/// 1. **World → camera**: `P_camera = pose⁻¹ · P_world` via [`glam::Mat4::inverse`].
 /// 2. **Behind-camera cull**: skip points with `Zc ≤ 0`.
 /// 3. **Pinhole projection**: `u = fx·(Xc/Zc) + cx`, `v = fy·(Yc/Zc) + cy`.
 /// 4. **Bounds cull**: skip pixels outside `[0, width) × [0, height)`.
@@ -27,30 +25,22 @@ pub fn project_to_depth_map(
     height: u32,
 ) -> DepthMap {
     let mut data = vec![f32::INFINITY; (width * height) as usize];
-    let m = &pose.matrix;
 
-    // Translation column from the pose matrix.
-    let tx = m[3] as f64;
-    let ty = m[7] as f64;
-    let tz = m[11] as f64;
+    // Invert once outside the loop: world → camera transform.
+    let world_to_cam = pose.mat.inverse();
 
     for p in &cloud.points {
-        let xw = p.x as f64 - tx;
-        let yw = p.y as f64 - ty;
-        let zw = p.z as f64 - tz;
-
-        // Rᵀ · (P_world − t): rows of Rᵀ are columns of R.
-        let xc = m[0] as f64 * xw + m[4] as f64 * yw + m[8] as f64 * zw;
-        let yc = m[1] as f64 * xw + m[5] as f64 * yw + m[9] as f64 * zw;
-        let zc = m[2] as f64 * xw + m[6] as f64 * yw + m[10] as f64 * zw;
+        // SIMD matrix-vector multiply via glam.
+        let pc = world_to_cam.transform_point3(glam::vec3(p.x, p.y, p.z));
 
         // Cull behind-camera points.
-        if zc <= 0.0 {
+        if pc.z <= 0.0 {
             continue;
         }
 
-        let u = k.fx * (xc / zc) + k.cx;
-        let v = k.fy * (yc / zc) + k.cy;
+        let zc = pc.z as f64;
+        let u = k.fx * (pc.x as f64 / zc) + k.cx;
+        let v = k.fy * (pc.y as f64 / zc) + k.cy;
 
         // Cull out-of-bounds pixels.
         if u < 0.0 || v < 0.0 || u >= width as f64 || v >= height as f64 {
@@ -60,9 +50,8 @@ pub fn project_to_depth_map(
         let idx = (v as u32 * width + u as u32) as usize;
 
         // Z-buffer: keep nearest.
-        let zc32 = zc as f32;
-        if zc32 < data[idx] {
-            data[idx] = zc32;
+        if pc.z < data[idx] {
+            data[idx] = pc.z;
         }
     }
 

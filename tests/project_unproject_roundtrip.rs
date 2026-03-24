@@ -24,19 +24,11 @@ fn roundtrip(p: Point3D, pose: &Transform4x4) -> Point3D {
 
     let dm = project_to_depth_map(&cloud(vec![p]), pose, &k, width, height);
 
-    // Compute expected pixel from the forward projection formula.
-    let m = &pose.matrix;
-    let tx = m[3] as f64;
-    let ty = m[7] as f64;
-    let tz = m[11] as f64;
-    let xw = p.x as f64 - tx;
-    let yw = p.y as f64 - ty;
-    let zw = p.z as f64 - tz;
-    let xc = m[0] as f64 * xw + m[4] as f64 * yw + m[8] as f64 * zw;
-    let yc = m[1] as f64 * xw + m[5] as f64 * yw + m[9] as f64 * zw;
-    let zc = m[2] as f64 * xw + m[6] as f64 * yw + m[10] as f64 * zw;
-    let u = k.fx * (xc / zc) + k.cx;
-    let v = k.fy * (yc / zc) + k.cy;
+    // Compute expected pixel via the world→camera transform (independent of project.rs).
+    let pc = pose.mat.inverse().transform_point3(glam::vec3(p.x, p.y, p.z));
+    let zc = pc.z as f64;
+    let u = k.fx * (pc.x as f64 / zc) + k.cx;
+    let v = k.fy * (pc.y as f64 / zc) + k.cy;
 
     // Use truncation (same as project_to_depth_map's `v as u32 * width + u as u32`).
     let u_px = u as u32;
@@ -89,12 +81,12 @@ fn identity_pose_grid_roundtrip() {
 fn translated_pose_roundtrip() {
     // Platform translated +5 m along X, +3 m along Z in world space.
     #[rustfmt::skip]
-    let pose = Transform4x4 { matrix: [
+    let pose = Transform4x4::from_row_major([
         1.0, 0.0, 0.0, 5.0,
         0.0, 1.0, 0.0, 0.0,
         0.0, 0.0, 1.0, 3.0,
         0.0, 0.0, 0.0, 1.0,
-    ]};
+    ]);
     // World point in front of this camera (in camera space: Zc > 0).
     let p = Point3D { x: 5.2, y: 0.1, z: 5.5 };
     let recovered = roundtrip(p, &pose);
