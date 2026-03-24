@@ -59,10 +59,16 @@ impl PoseBuffer {
         }
     }
 
-    /// Look up the pose closest to `capture_ts_us`.
+    /// Look up the pose at `capture_ts_us`, interpolating when the timestamp
+    /// falls strictly between two bracketing entries.
+    ///
+    /// - **Exact match** — returns the stored pose unchanged.
+    /// - **Bracketed** — LERP on translation, SLERP on rotation between the
+    ///   two nearest bracketing entries, then reconstructs a [`Transform4x4`].
+    /// - **Outside range** — returns the nearest boundary pose (clamped).
     ///
     /// Returns `None` if no entry is within `tolerance_us` of the requested
-    /// timestamp.
+    /// timestamp (single-entry case) or if both brackets are outside tolerance.
     ///
     /// # Complexity
     /// O(log n) — binary-searches each of the two sorted ring-buffer segments
@@ -76,25 +82,83 @@ impl PoseBuffer {
         // are monotonically increasing, both segments below are sorted:
         //   seg_a: entries[head..len]  — older (lower ts)
         //   seg_b: entries[0..head]    — newer (higher ts)
-        // Binary-search each segment independently and take the closest match.
+        // Concatenate logically so we can find the predecessor and successor
+        // across the seam, then binary-search each segment.
         let seg_a = &self.entries[self.head..self.len];
         let seg_b = &self.entries[..self.head];
 
-        let mut best: Option<(u64, Transform4x4)> = None;
+        // Find the best predecessor (ts <= capture_ts_us) and successor
+        // (ts >= capture_ts_us) across both segments.
+        let mut pred: Option<Entry> = None; // largest ts <= capture_ts_us
+        let mut succ: Option<Entry> = None; // smallest ts >= capture_ts_us
+
         for seg in [seg_a, seg_b] {
-            // lower_bound: idx is the first entry with ts_us >= capture_ts_us.
-            // Exact match lands at idx; nearest-before lands at idx-1.
+            // partition_point returns the first index where ts_us >= capture_ts_us.
             let idx = seg.partition_point(|e| e.ts_us < capture_ts_us);
-            for &i in &[idx.wrapping_sub(1), idx] {
-                if let Some(e) = seg.get(i) {
-                    let delta = e.ts_us.abs_diff(capture_ts_us);
-                    if delta <= self.tolerance_us && best.is_none_or(|(d, _)| delta < d) {
-                        best = Some((delta, e.pose));
+
+            // Candidate predecessor: entry just before idx (ts_us < capture_ts_us),
+            // or the entry AT idx if it's an exact match.
+            if idx < seg.len() && seg[idx].ts_us == capture_ts_us {
+                // Exact match — both predecessor and successor converge here.
+                pred = Some(seg[idx]);
+                succ = Some(seg[idx]);
+            } else {
+                if idx > 0 {
+                    let e = seg[idx - 1];
+                    if pred.is_none_or(|p: Entry| e.ts_us > p.ts_us) {
+                        pred = Some(e);
+                    }
+                }
+                if let Some(&e) = seg.get(idx) {
+                    if succ.is_none_or(|s: Entry| e.ts_us < s.ts_us) {
+                        succ = Some(e);
                     }
                 }
             }
         }
-        best.map(|(_, pose)| pose)
+
+        match (pred, succ) {
+            // Exact match from both sides (or a single entry that equals ts).
+            (Some(p), Some(s)) if p.ts_us == s.ts_us => {
+                Some(p.pose)
+            }
+
+            // Strictly bracketed — interpolate.
+            (Some(p), Some(s)) => {
+                // Compute t in [0, 1].
+                let span = (s.ts_us - p.ts_us) as f32;
+                let t = (capture_ts_us - p.ts_us) as f32 / span;
+
+                let (_, rot_a, trans_a) = p.pose.mat.to_scale_rotation_translation();
+                let (_, rot_b, trans_b) = s.pose.mat.to_scale_rotation_translation();
+
+                let trans = trans_a.lerp(trans_b, t);
+                let rot   = rot_a.slerp(rot_b, t);
+
+                let mat = glam::Mat4::from_rotation_translation(rot, trans);
+                Some(Transform4x4 { mat })
+            }
+
+            // Only a predecessor exists — return it if within tolerance.
+            (Some(p), None) => {
+                if p.ts_us.abs_diff(capture_ts_us) <= self.tolerance_us {
+                    Some(p.pose)
+                } else {
+                    None
+                }
+            }
+
+            // Only a successor exists — return it if within tolerance.
+            (None, Some(s)) => {
+                if s.ts_us.abs_diff(capture_ts_us) <= self.tolerance_us {
+                    Some(s.pose)
+                } else {
+                    None
+                }
+            }
+
+            (None, None) => None,
+        }
     }
 }
 
@@ -151,16 +215,103 @@ mod tests {
     }
 
     #[test]
-    fn picks_closer_of_two_candidates() {
+    fn interpolates_between_two_candidates() {
         let mut buf = PoseBuffer::new(16, 500_000);
-        // Distinguish poses by x-translation so we can tell which was returned.
+        // Distinguish poses by x-translation so we can verify interpolation.
         let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(1.0, 0.0, 0.0)) };
         let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(2.0, 0.0, 0.0)) };
         buf.push(1_000_000, pose_a);
         buf.push(1_200_000, pose_b);
-        // Query at 1150 ms: delta_a=150 ms, delta_b=50 ms → pose_b is closer
+        // Query at 1150 ms: t = (150/200) = 0.75 → x = 1.0 + 0.75*1.0 = 1.75
         let result = buf.pose_at(1_150_000).unwrap();
-        assert!((result.mat.w_axis.x - 2.0).abs() < 1e-6, "should select the closer pose");
+        assert!((result.mat.w_axis.x - 1.75).abs() < 1e-5, "should interpolate between poses");
+    }
+
+    // --- Acceptance-criteria tests for LERP/SLERP interpolation ---
+
+    #[test]
+    fn lerp_midpoint_translation() {
+        let mut buf = PoseBuffer::new(16, 1_000_000);
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 0.0)) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(4.0, 6.0, 8.0)) };
+        buf.push(0, pose_a);
+        buf.push(1_000_000, pose_b);
+        // Midpoint: t = 0.5 → translation = (2.0, 3.0, 4.0)
+        let result = buf.pose_at(500_000).unwrap();
+        let (_, _, trans) = result.mat.to_scale_rotation_translation();
+        assert!((trans.x - 2.0).abs() < 1e-5, "x midpoint");
+        assert!((trans.y - 3.0).abs() < 1e-5, "y midpoint");
+        assert!((trans.z - 4.0).abs() < 1e-5, "z midpoint");
+    }
+
+    #[test]
+    fn slerp_midpoint_rotation() {
+        use std::f32::consts::FRAC_PI_2;
+        let mut buf = PoseBuffer::new(16, 1_000_000);
+        // Rotate from identity (0 rad) to 90° around Z.
+        let rot_a = glam::Quat::IDENTITY;
+        let rot_b = glam::Quat::from_rotation_z(FRAC_PI_2);
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_rotation_translation(rot_a, glam::Vec3::ZERO) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_rotation_translation(rot_b, glam::Vec3::ZERO) };
+        buf.push(0, pose_a);
+        buf.push(1_000_000, pose_b);
+        // Midpoint: t = 0.5 → rotation should be ~45° around Z.
+        let result = buf.pose_at(500_000).unwrap();
+        let (_, rot, _) = result.mat.to_scale_rotation_translation();
+        let expected = glam::Quat::from_rotation_z(FRAC_PI_2 / 2.0);
+        // Quaternions q and -q represent the same rotation; dot product ≈ 1.
+        let dot = rot.dot(expected).abs();
+        assert!(dot > 1.0 - 1e-5, "rotation should be halfway (dot={dot})");
+    }
+
+    #[test]
+    fn exact_timestamp_no_drift() {
+        let mut buf = PoseBuffer::new(16, 1_000_000);
+        // Use a non-trivial rotation to detect any floating-point contamination.
+        let rot = glam::Quat::from_rotation_y(1.23);
+        let trans = glam::vec3(5.0, -3.0, 2.0);
+        let mat = glam::Mat4::from_rotation_translation(rot, trans);
+        let pose = Transform4x4 { mat };
+        buf.push(500_000, pose);
+        buf.push(1_000_000, Transform4x4::identity());
+        // Query exactly at the first entry — must get back the stored matrix unchanged.
+        let result = buf.pose_at(500_000).unwrap();
+        for (a, b) in result.mat.to_cols_array().iter().zip(mat.to_cols_array().iter()) {
+            assert_eq!(a, b, "exact-match query must return stored matrix bit-for-bit");
+        }
+    }
+
+    #[test]
+    fn query_before_range_returns_nearest_boundary() {
+        let mut buf = PoseBuffer::new(16, 500_000);
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(1.0, 0.0, 0.0)) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(2.0, 0.0, 0.0)) };
+        buf.push(1_000_000, pose_a);
+        buf.push(2_000_000, pose_b);
+        // Query 200 ms before first entry — within tolerance, should clamp to pose_a.
+        let result = buf.pose_at(800_000).unwrap();
+        assert!((result.mat.w_axis.x - 1.0).abs() < 1e-5, "should clamp to lower boundary");
+    }
+
+    #[test]
+    fn query_after_range_returns_nearest_boundary() {
+        let mut buf = PoseBuffer::new(16, 500_000);
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(1.0, 0.0, 0.0)) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(2.0, 0.0, 0.0)) };
+        buf.push(1_000_000, pose_a);
+        buf.push(2_000_000, pose_b);
+        // Query 200 ms after last entry — within tolerance, should clamp to pose_b.
+        let result = buf.pose_at(2_200_000).unwrap();
+        assert!((result.mat.w_axis.x - 2.0).abs() < 1e-5, "should clamp to upper boundary");
+    }
+
+    #[test]
+    fn query_outside_tolerance_returns_none() {
+        let mut buf = PoseBuffer::new(16, 100_000);
+        buf.push(1_000_000, Transform4x4::identity());
+        buf.push(2_000_000, Transform4x4::identity());
+        // Query 300 ms after last entry — outside 100 ms tolerance.
+        assert!(buf.pose_at(2_300_000).is_none());
     }
 
     #[test]
