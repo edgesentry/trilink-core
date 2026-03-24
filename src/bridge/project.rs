@@ -311,7 +311,7 @@ mod tests {
             &hm_cloud(vec![Point3D { x: 1.0, y: 0.0, z: 5.0 }]),
             0.0, 0.0, 1.0, 5, 5,
         );
-        assert!(!hm.data[0 * 5 + 1].is_nan(), "point at exact edge should go to col=1");
-        assert!((hm.data[0 * 5 + 1] - 5.0).abs() < 1e-5);
+        assert!(!hm.data[1].is_nan(), "point at exact edge should go to col=1");
+        assert!((hm.data[1] - 5.0).abs() < 1e-5);
     }
 }
