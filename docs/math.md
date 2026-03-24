@@ -188,6 +188,99 @@ query: pose_at(1050)
 
 ---
 
+## Forward Projection (3D → Pixel)
+
+The inverse of unprojection: given a 3D world-space point and the camera pose, compute the pixel it lands on and its depth. Used by `bridge/project.rs` to convert a LiDAR point cloud into a depth map.
+
+### Step 1 — World → camera (rigid-body inverse)
+
+The pose matrix `T` encodes `P_world = R · P_camera + t`, so the inverse is:
+
+```
+P_camera = Rᵀ · (P_world − t)
+```
+
+Expanding with the row-major matrix layout (`m[row*4 + col]`):
+
+```
+tx = m[3],  ty = m[7],  tz = m[11]
+
+Xc = m[0]·(Xw−tx) + m[4]·(Yw−ty) + m[8]·(Zw−tz)
+Yc = m[1]·(Xw−tx) + m[5]·(Yw−ty) + m[9]·(Zw−tz)
+Zc = m[2]·(Xw−tx) + m[6]·(Yw−ty) + m[10]·(Zw−tz)
+```
+
+**Why `Rᵀ` and not `R⁻¹`?** For rotation matrices `R⁻¹ = Rᵀ` (orthonormality). This avoids any general matrix inversion and keeps the operation cheap.
+
+### Step 2 — Behind-camera cull
+
+Discard points with `Zc ≤ 0`. These are behind the image plane and cannot be projected to a valid pixel.
+
+### Step 3 — Pinhole projection
+
+```
+u = fx · (Xc / Zc) + cx
+v = fy · (Yc / Zc) + cy
+```
+
+The perspective divide by `Zc` compresses depth: distant objects cluster towards `(cx, cy)`.
+
+### Step 4 — Bounds cull
+
+Discard pixels where `u ∉ [0, W)` or `v ∉ [0, H)`. These points exist in the scene but fall outside the sensor's field of view.
+
+### Step 5 — Z-buffer
+
+Multiple world points may project to the same pixel (occlusion). Keep the one with the smallest `Zc` (nearest to the camera). This matches the physical reality of what a camera sees.
+
+### Full forward projection pipeline
+
+```
+For each P_world in point cloud:
+  1. P_camera = Rᵀ · (P_world − t)
+  2. If Zc ≤ 0 → skip
+  3. u = fx·(Xc/Zc) + cx,  v = fy·(Yc/Zc) + cy
+  4. If u,v outside image → skip
+  5. depth_map[v][u] = min(depth_map[v][u], Zc)
+```
+
+This is exactly what `bridge/project::project_to_depth_map` implements.
+
+---
+
+## Height Map Projection
+
+A height map is a top-down orthographic view of the scene. Unlike the depth map, it operates entirely in world space — no camera pose is involved.
+
+### Cell index formula
+
+For a grid with top-left corner at `(origin_x, origin_y)` and cell size `resolution_m`:
+
+```
+col = floor((P_world.x − origin_x) / resolution_m)
+row = floor((P_world.y − origin_y) / resolution_m)
+```
+
+Points outside `[0, cols) × [0, rows)` are silently skipped.
+
+### Aggregation: maximum Z
+
+Each cell stores the **maximum Z** of all points that fall into it. This detects protrusions above the design surface (e.g. unexpected objects on a floor, raised features on a structure). Cells with no point are left as `f32::NAN`.
+
+### Full height map pipeline
+
+```
+For each P_world in point cloud:
+  col = floor((Xw − origin_x) / resolution_m)
+  row = floor((Yw − origin_y) / resolution_m)
+  If (col, row) outside grid → skip
+  height_map[row][col] = max(height_map[row][col], Zw)
+```
+
+This is exactly what `bridge/project::project_to_height_map` implements.
+
+---
+
 ## Numerical Ranges to Expect
 
 When implementing and debugging unprojection, these are typical values for a vehicle side-scan at ~2 m distance:
@@ -200,3 +293,6 @@ When implementing and debugging unprojection, these are typical values for a veh
 | `d` (depth) | 0.5–5.0 m |
 | `Xc`, `Yc` | ±1.5 m at 2 m depth |
 | `Xw`, `Yw`, `Zw` | site-scale metres, depends on map origin |
+| Point cloud size | 50K–500K points per sweep |
+| `resolution_m` (height map) | 0.005–0.02 m (5–20 mm per cell) |
+| Deviation threshold | 0.005–0.01 m (5–10 mm) |
