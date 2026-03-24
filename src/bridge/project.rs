@@ -1,4 +1,4 @@
-use crate::{CameraIntrinsics, DepthMap, PointCloud, Transform4x4};
+use crate::{CameraIntrinsics, DepthMap, HeightMap, PointCloud, Transform4x4};
 
 /// Project a 3D world-space point cloud onto a 2D depth map.
 ///
@@ -67,6 +67,61 @@ pub fn project_to_depth_map(
     }
 
     DepthMap { width, height, data }
+}
+
+/// Project a 3D world-space point cloud onto a top-down height map.
+///
+/// Operates entirely in world space — no camera pose is involved.
+///
+/// # Arguments
+/// - `cloud`        — LiDAR/ToF sweep in world space
+/// - `origin_x`     — world X of the grid's top-left corner
+/// - `origin_y`     — world Y of the grid's top-left corner
+/// - `resolution_m` — cell size in metres
+/// - `cols`         — grid width in cells
+/// - `rows`         — grid height in cells
+///
+/// # Math
+/// For each point:
+/// ```text
+/// col = floor((P_world.x − origin_x) / resolution_m)
+/// row = floor((P_world.y − origin_y) / resolution_m)
+/// ```
+/// Points outside `[0, cols) × [0, rows)` are silently skipped.
+/// Per cell, the **maximum Z** is retained (detects protrusions above the design surface).
+/// Cells with no point are initialised to `f32::NAN`.
+pub fn project_to_height_map(
+    cloud: &PointCloud,
+    origin_x: f32,
+    origin_y: f32,
+    resolution_m: f32,
+    cols: u32,
+    rows: u32,
+) -> HeightMap {
+    let mut data = vec![f32::NAN; (cols * rows) as usize];
+
+    for p in &cloud.points {
+        let col_f = (p.x - origin_x) / resolution_m;
+        let row_f = (p.y - origin_y) / resolution_m;
+
+        if col_f < 0.0 || row_f < 0.0 {
+            continue;
+        }
+
+        let col = col_f.floor() as u32;
+        let row = row_f.floor() as u32;
+
+        if col >= cols || row >= rows {
+            continue;
+        }
+
+        let idx = (row * cols + col) as usize;
+        if data[idx].is_nan() || p.z > data[idx] {
+            data[idx] = p.z;
+        }
+    }
+
+    HeightMap { origin_x, origin_y, resolution_m, cols, rows, data }
 }
 
 #[cfg(test)]
@@ -186,5 +241,77 @@ mod tests {
     fn empty_cloud_produces_all_infinity() {
         let dm = project_to_depth_map(&cloud(vec![]), &identity(), &k(), 4, 4);
         assert!(dm.data.iter().all(|v| v.is_infinite()));
+    }
+
+    // --- project_to_height_map ---
+
+    fn hm_cloud(points: Vec<Point3D>) -> PointCloud {
+        PointCloud { capture_ts_us: 0, points, intensities: None }
+    }
+
+    // Single point → correct cell index.
+    #[test]
+    fn single_point_correct_cell_index() {
+        // origin=(0,0), resolution=0.1: point (0.25, 0.35, 1.0)
+        // col = floor(0.25/0.1) = 2, row = floor(0.35/0.1) = 3
+        let hm = project_to_height_map(
+            &hm_cloud(vec![Point3D { x: 0.25, y: 0.35, z: 1.0 }]),
+            0.0, 0.0, 0.1, 10, 10,
+        );
+        assert!(!hm.data[3 * 10 + 2].is_nan(), "cell (col=2, row=3) should have data");
+        assert!((hm.data[3 * 10 + 2] - 1.0).abs() < 1e-5);
+    }
+
+    // Single point → correct height value.
+    #[test]
+    fn single_point_correct_height() {
+        let hm = project_to_height_map(
+            &hm_cloud(vec![Point3D { x: 0.0, y: 0.0, z: 2.5 }]),
+            0.0, 0.0, 1.0, 5, 5,
+        );
+        assert!((hm.data[0] - 2.5).abs() < 1e-5);
+    }
+
+    // Two points in same cell, different Z → max Z wins.
+    #[test]
+    fn two_points_same_cell_max_z_wins() {
+        let hm = project_to_height_map(
+            &hm_cloud(vec![
+                Point3D { x: 0.0, y: 0.0, z: 1.0 },
+                Point3D { x: 0.0, y: 0.0, z: 3.0 },
+            ]),
+            0.0, 0.0, 1.0, 5, 5,
+        );
+        assert!((hm.data[0] - 3.0).abs() < 1e-5, "max Z should win");
+    }
+
+    // Point outside grid bounds → no panic, no data written.
+    #[test]
+    fn out_of_bounds_point_no_panic() {
+        let hm = project_to_height_map(
+            &hm_cloud(vec![Point3D { x: 999.0, y: 999.0, z: 1.0 }]),
+            0.0, 0.0, 1.0, 5, 5,
+        );
+        assert!(hm.data.iter().all(|v| v.is_nan()), "out-of-bounds point must not touch grid");
+    }
+
+    // Empty cloud → all cells NaN.
+    #[test]
+    fn empty_cloud_all_nan() {
+        let hm = project_to_height_map(&hm_cloud(vec![]), 0.0, 0.0, 0.1, 4, 4);
+        assert!(hm.data.iter().all(|v| v.is_nan()));
+    }
+
+    // resolution_m boundary: point exactly on a cell edge uses floor (maps to lower cell).
+    #[test]
+    fn cell_edge_uses_floor() {
+        // Point at x=1.0 exactly, resolution=1.0, origin=0.0
+        // col = floor(1.0 / 1.0) = 1
+        let hm = project_to_height_map(
+            &hm_cloud(vec![Point3D { x: 1.0, y: 0.0, z: 5.0 }]),
+            0.0, 0.0, 1.0, 5, 5,
+        );
+        assert!(!hm.data[0 * 5 + 1].is_nan(), "point at exact edge should go to col=1");
+        assert!((hm.data[0 * 5 + 1] - 5.0).abs() < 1e-5);
     }
 }
