@@ -106,6 +106,71 @@ impl BBox2D {
     }
 }
 
+/// One LiDAR/ToF sweep: world-space points with optional per-point intensity.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PointCloud {
+    /// Sweep capture time (microseconds since UNIX epoch).
+    pub capture_ts_us: u64,
+    /// World-space 3D points in the sweep.
+    pub points: Vec<Point3D>,
+    /// Per-point LiDAR intensity, parallel to `points`. `None` if not available.
+    pub intensities: Option<Vec<f32>>,
+}
+
+/// Per-pixel depth map in metres; output of `project_to_depth_map`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DepthMap {
+    pub width: u32,
+    pub height: u32,
+    /// Row-major depth values in metres. `f32::INFINITY` means no point projected here.
+    pub data: Vec<f32>,
+}
+
+impl DepthMap {
+    /// Returns the depth at pixel `(u, v)`. Panics if out of bounds.
+    pub fn get(&self, u: u32, v: u32) -> f32 {
+        self.data[(v * self.width + u) as usize]
+    }
+
+    /// Returns `true` if pixel `(u, v)` has a finite depth value.
+    pub fn has_depth(&self, u: u32, v: u32) -> bool {
+        self.get(u, v).is_finite()
+    }
+}
+
+/// Per-cell max height map in metres; output of `project_to_height_map`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HeightMap {
+    /// World-space X coordinate of the map origin (top-left corner).
+    pub origin_x: f32,
+    /// World-space Y coordinate of the map origin (top-left corner).
+    pub origin_y: f32,
+    /// Cell size in metres.
+    pub resolution_m: f32,
+    pub cols: u32,
+    pub rows: u32,
+    /// Row-major max height values in metres. `f32::NAN` means no data in this cell.
+    ///
+    /// Serialized as JSON `null` for NaN cells (JSON has no NaN literal).
+    #[serde(with = "nan_as_null_vec")]
+    pub data: Vec<f32>,
+}
+
+/// Serde helper: serializes a `Vec<f32>` where `NaN` values round-trip as JSON `null`.
+mod nan_as_null_vec {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(data: &[f32], s: S) -> Result<S::Ok, S::Error> {
+        let opts: Vec<Option<f32>> = data.iter().map(|&v| if v.is_nan() { None } else { Some(v) }).collect();
+        opts.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<f32>, D::Error> {
+        let opts: Vec<Option<f32>> = Vec::deserialize(d)?;
+        Ok(opts.into_iter().map(|v| v.unwrap_or(f32::NAN)).collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,5 +288,88 @@ mod tests {
         assert!(decoded.world_pos.is_none());
         assert!(decoded.depth_m.is_none());
         assert_eq!(decoded.class, "dent");
+    }
+
+    // --- PointCloud ---
+
+    #[test]
+    fn point_cloud_roundtrip() {
+        let pc = PointCloud {
+            capture_ts_us: 1_000_000,
+            points: vec![Point3D { x: 1.0, y: 2.0, z: 3.0 }],
+            intensities: Some(vec![0.8]),
+        };
+        let json = serde_json::to_string(&pc).unwrap();
+        let decoded: PointCloud = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.capture_ts_us, 1_000_000);
+        assert_eq!(decoded.points.len(), 1);
+        assert!((decoded.points[0].x - 1.0).abs() < 1e-6);
+        assert_eq!(decoded.intensities.as_ref().unwrap().len(), 1);
+        assert!((decoded.intensities.unwrap()[0] - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn point_cloud_no_intensities_roundtrip() {
+        let pc = PointCloud {
+            capture_ts_us: 0,
+            points: vec![],
+            intensities: None,
+        };
+        let json = serde_json::to_string(&pc).unwrap();
+        let decoded: PointCloud = serde_json::from_str(&json).unwrap();
+        assert!(decoded.intensities.is_none());
+        assert!(decoded.points.is_empty());
+    }
+
+    // --- DepthMap ---
+
+    #[test]
+    fn depth_map_get_and_has_depth() {
+        // 2×2 depth map: top-left has depth 1.5, rest is infinity
+        let dm = DepthMap {
+            width: 2,
+            height: 2,
+            data: vec![1.5, f32::INFINITY, f32::INFINITY, f32::INFINITY],
+        };
+        assert_eq!(dm.get(0, 0), 1.5);
+        assert!(dm.has_depth(0, 0));
+        assert_eq!(dm.get(1, 0), f32::INFINITY);
+        assert!(!dm.has_depth(1, 0));
+    }
+
+    #[test]
+    fn depth_map_roundtrip() {
+        let dm = DepthMap {
+            width: 1,
+            height: 1,
+            data: vec![2.0],
+        };
+        let json = serde_json::to_string(&dm).unwrap();
+        let decoded: DepthMap = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.width, 1);
+        assert_eq!(decoded.height, 1);
+        assert!((decoded.data[0] - 2.0).abs() < 1e-6);
+    }
+
+    // --- HeightMap ---
+
+    #[test]
+    fn height_map_roundtrip() {
+        let hm = HeightMap {
+            origin_x: 0.0,
+            origin_y: 0.0,
+            resolution_m: 0.1,
+            cols: 2,
+            rows: 2,
+            data: vec![1.0, f32::NAN, 0.5, f32::NAN],
+        };
+        let json = serde_json::to_string(&hm).unwrap();
+        let decoded: HeightMap = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.cols, 2);
+        assert_eq!(decoded.rows, 2);
+        assert!((decoded.resolution_m - 0.1).abs() < 1e-6);
+        assert!((decoded.data[0] - 1.0).abs() < 1e-6);
+        assert!(decoded.data[1].is_nan());
+        assert!((decoded.data[2] - 0.5).abs() < 1e-6);
     }
 }
