@@ -171,8 +171,8 @@ pub struct HeightMap {
     pub origin_y: f32,
     /// Cell size in metres.
     pub resolution_m: f32,
-    pub cols: u32,
-    pub rows: u32,
+    pub width: u32,
+    pub height: u32,
     /// Row-major max height values in metres. `f32::NAN` means no data in this cell.
     ///
     /// Serialized as JSON `null` for NaN cells (JSON has no NaN literal).
@@ -383,14 +383,14 @@ mod tests {
             origin_x: 0.0,
             origin_y: 0.0,
             resolution_m: 0.1,
-            cols: 2,
-            rows: 2,
+            width: 2,
+            height: 2,
             data: vec![1.0, f32::NAN, 0.5, f32::NAN],
         };
         let json = serde_json::to_string(&hm).unwrap();
         let decoded: HeightMap = serde_json::from_str(&json).unwrap();
-        assert_eq!(decoded.cols, 2);
-        assert_eq!(decoded.rows, 2);
+        assert_eq!(decoded.width, 2);
+        assert_eq!(decoded.height, 2);
         assert!((decoded.resolution_m - 0.1).abs() < 1e-6);
         assert!((decoded.data[0] - 1.0).abs() < 1e-6);
         assert!(decoded.data[1].is_nan());

@@ -10,8 +10,8 @@ fn known_points_height_matches_original_z() {
     let resolution = 0.01_f32;
     let origin_x = 0.0_f32;
     let origin_y = 0.0_f32;
-    let cols = 100_u32;
-    let rows = 100_u32;
+    let width = 100_u32;
+    let height = 100_u32;
 
     let points: Vec<Point3D> = (0..10)
         .map(|i| Point3D {
@@ -21,12 +21,12 @@ fn known_points_height_matches_original_z() {
         })
         .collect();
 
-    let hm = project_to_height_map(&cloud(points.clone()), origin_x, origin_y, resolution, cols, rows);
+    let hm = project_to_height_map(&cloud(points.clone()), origin_x, origin_y, resolution, width, height);
 
     for p in &points {
         let col = ((p.x - origin_x) / resolution).floor() as u32;
         let row = ((p.y - origin_y) / resolution).floor() as u32;
-        let stored = hm.data[(row * cols + col) as usize];
+        let stored = hm.data[(row * width + col) as usize];
         assert!(
             !stored.is_nan(),
             "cell ({col},{row}) must have data for point ({:.3},{:.3},{:.3})",
