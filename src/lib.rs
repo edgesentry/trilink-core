@@ -44,6 +44,10 @@ pub struct CameraIntrinsics {
 }
 
 /// Row-major homogeneous 4×4 transform (platform pose in world frame).
+///
+/// Stored as a flat `[f32; 16]` array for serde compatibility. Use
+/// [`to_mat4`](Transform4x4::to_mat4) to obtain a [`glam::Mat4`] for
+/// SIMD-accelerated arithmetic, matrix inversion, and operator overloading.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Transform4x4 {
     pub matrix: [f32; 16],
@@ -52,27 +56,34 @@ pub struct Transform4x4 {
 impl Transform4x4 {
     /// Identity transform — platform at origin, no rotation.
     pub fn identity() -> Self {
-        #[rustfmt::skip]
-        let m = [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ];
-        Self { matrix: m }
+        Self { matrix: glam::Mat4::IDENTITY.transpose().to_cols_array() }
+    }
+
+    /// Convert to a [`glam::Mat4`] for SIMD arithmetic, inversion, and operator overloading.
+    ///
+    /// The stored matrix is row-major; `glam::Mat4` is column-major internally,
+    /// so this method transposes on conversion.
+    pub fn to_mat4(&self) -> glam::Mat4 {
+        // Our matrix is row-major: interpret cols_array as rows then transpose.
+        glam::Mat4::from_cols_array(&self.matrix).transpose()
     }
 
     /// Apply this transform to a camera-space point, returning a world-space [`Point3D`].
     ///
-    /// Computes `P_world = self · [xc, yc, zc, 1]ᵀ` using the top three rows of the
-    /// row-major 4×4 matrix (the homogeneous bottom row is not needed for affine transforms).
+    /// Computes `P_world = self · [xc, yc, zc, 1]ᵀ` via [`glam::Mat4::transform_point3`].
     pub fn transform_point(&self, xc: f64, yc: f64, zc: f64) -> Point3D {
-        let m = &self.matrix;
-        Point3D {
-            x: (m[0] as f64 * xc + m[1] as f64 * yc + m[2]  as f64 * zc + m[3]  as f64) as f32,
-            y: (m[4] as f64 * xc + m[5] as f64 * yc + m[6]  as f64 * zc + m[7]  as f64) as f32,
-            z: (m[8] as f64 * xc + m[9] as f64 * yc + m[10] as f64 * zc + m[11] as f64) as f32,
-        }
+        self.to_mat4()
+            .transform_point3(glam::vec3(xc as f32, yc as f32, zc as f32))
+            .into()
+    }
+}
+
+impl From<glam::Mat4> for Transform4x4 {
+    /// Convert a [`glam::Mat4`] back to a [`Transform4x4`].
+    ///
+    /// Transposes from glam's column-major layout to the row-major `[f32; 16]` storage.
+    fn from(m: glam::Mat4) -> Self {
+        Self { matrix: m.transpose().to_cols_array() }
     }
 }
 
@@ -106,6 +117,18 @@ pub struct Point3D {
     pub x: f32,
     pub y: f32,
     pub z: f32,
+}
+
+impl From<Point3D> for glam::Vec3 {
+    fn from(p: Point3D) -> Self {
+        glam::vec3(p.x, p.y, p.z)
+    }
+}
+
+impl From<glam::Vec3> for Point3D {
+    fn from(v: glam::Vec3) -> Self {
+        Point3D { x: v.x, y: v.y, z: v.z }
+    }
 }
 
 /// Pixel-space bounding box (inclusive min, exclusive max convention).

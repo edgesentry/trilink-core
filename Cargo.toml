@@ -17,6 +17,7 @@ sqlite  = ["rusqlite"]
 serde      = { version = "1", features = ["derive"] }
 thiserror  = "2"
 rusqlite   = { version = "0.39", optional = true, features = ["bundled"] }
+glam = { version = "0.32.1", features = ["serde"] }
 
 [dev-dependencies]
 serde_json = "1"
