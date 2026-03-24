@@ -27,7 +27,7 @@ pub fn project_to_depth_map(
     let mut data = vec![f32::INFINITY; (width * height) as usize];
 
     // Invert once outside the loop: world → camera transform.
-    let world_to_cam = pose.to_mat4().inverse();
+    let world_to_cam = pose.mat.inverse();
 
     for p in &cloud.points {
         // SIMD matrix-vector multiply via glam.

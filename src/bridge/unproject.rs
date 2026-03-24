@@ -29,8 +29,8 @@ pub fn unproject(
     let yc = (v - k.cy) / k.fy * d;
     let zc = d;
 
-    // Step 4 — apply the 4×4 pose transform (row-major).
-    pose.transform_point(xc, yc, zc)
+    // Step 4 — apply the 4×4 pose transform.
+    pose.transform_point(xc as f32, yc as f32, zc as f32)
 }
 
 #[cfg(test)]
@@ -143,12 +143,12 @@ mod tests {
     fn translated_pose_offsets_world_coords() {
         // Translation matrix: identity rotation, translation (+1, 0, +3)
         #[rustfmt::skip]
-        let pose = Transform4x4 { matrix: [
+        let pose = Transform4x4::from_row_major([
             1.0, 0.0, 0.0, 1.0,   // row 0: tx = 1.0
             0.0, 1.0, 0.0, 0.0,   // row 1: ty = 0.0
             0.0, 0.0, 1.0, 3.0,   // row 2: tz = 3.0
             0.0, 0.0, 0.0, 1.0,
-        ]};
+        ]);
         let p = unproject(&bbox(960.0, 540.0, 960.0, 540.0), Some(2.0), 2.0, &k_standard(), &pose);
         assert!((p.x - 1.0).abs() < 1e-4, "world x should include robot translation");
         assert!(p.y.abs() < 1e-4);

@@ -154,15 +154,13 @@ mod tests {
     fn picks_closer_of_two_candidates() {
         let mut buf = PoseBuffer::new(16, 500_000);
         // Distinguish poses by x-translation so we can tell which was returned.
-        let mut pose_a = Transform4x4::identity();
-        pose_a.matrix[3] = 1.0; // x = 1 — stored at 1000 ms
-        let mut pose_b = Transform4x4::identity();
-        pose_b.matrix[3] = 2.0; // x = 2 — stored at 1200 ms
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(1.0, 0.0, 0.0)) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(2.0, 0.0, 0.0)) };
         buf.push(1_000_000, pose_a);
         buf.push(1_200_000, pose_b);
         // Query at 1150 ms: delta_a=150 ms, delta_b=50 ms → pose_b is closer
         let result = buf.pose_at(1_150_000).unwrap();
-        assert_eq!(result.matrix[3], 2.0, "should select the closer pose");
+        assert!((result.mat.w_axis.x - 2.0).abs() < 1e-6, "should select the closer pose");
     }
 
     #[test]

@@ -43,47 +43,87 @@ pub struct CameraIntrinsics {
     pub cy: f64,
 }
 
-/// Row-major homogeneous 4×4 transform (platform pose in world frame).
+/// Homogeneous 4×4 transform (platform pose in world frame).
 ///
-/// Stored as a flat `[f32; 16]` array for serde compatibility. Use
-/// [`to_mat4`](Transform4x4::to_mat4) to obtain a [`glam::Mat4`] for
-/// SIMD-accelerated arithmetic, matrix inversion, and operator overloading.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+/// Wraps a [`glam::Mat4`] directly for zero-overhead SIMD arithmetic, inversion,
+/// and operator overloading. Serialized as a row-major `{"matrix": [f32; 16]}`
+/// JSON object for human readability.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Transform4x4 {
-    pub matrix: [f32; 16],
+    /// Underlying column-major matrix (glam convention).
+    pub mat: glam::Mat4,
 }
 
 impl Transform4x4 {
     /// Identity transform — platform at origin, no rotation.
     pub fn identity() -> Self {
-        Self { matrix: glam::Mat4::IDENTITY.transpose().to_cols_array() }
+        Self { mat: glam::Mat4::IDENTITY }
     }
 
-    /// Convert to a [`glam::Mat4`] for SIMD arithmetic, inversion, and operator overloading.
+    /// Construct from a **row-major** flat array (the human-readable layout).
     ///
-    /// The stored matrix is row-major; `glam::Mat4` is column-major internally,
-    /// so this method transposes on conversion.
-    pub fn to_mat4(&self) -> glam::Mat4 {
-        // Our matrix is row-major: interpret cols_array as rows then transpose.
-        glam::Mat4::from_cols_array(&self.matrix).transpose()
+    /// ```text
+    /// arr = [r00, r01, r02, r03,   // row 0
+    ///        r10, r11, r12, r13,   // row 1
+    ///        r20, r21, r22, r23,   // row 2
+    ///        r30, r31, r32, r33]   // row 3
+    /// ```
+    pub fn from_row_major(arr: [f32; 16]) -> Self {
+        // from_cols_array treats input as column-major; transpose converts row→col.
+        Self { mat: glam::Mat4::from_cols_array(&arr).transpose() }
+    }
+
+    /// Return a **row-major** flat array representation.
+    ///
+    /// Inverse of [`from_row_major`](Transform4x4::from_row_major).
+    pub fn to_row_major(&self) -> [f32; 16] {
+        self.mat.transpose().to_cols_array()
     }
 
     /// Apply this transform to a camera-space point, returning a world-space [`Point3D`].
     ///
     /// Computes `P_world = self · [xc, yc, zc, 1]ᵀ` via [`glam::Mat4::transform_point3`].
-    pub fn transform_point(&self, xc: f64, yc: f64, zc: f64) -> Point3D {
-        self.to_mat4()
-            .transform_point3(glam::vec3(xc as f32, yc as f32, zc as f32))
-            .into()
+    pub fn transform_point(&self, xc: f32, yc: f32, zc: f32) -> Point3D {
+        self.mat.transform_point3(glam::vec3(xc, yc, zc)).into()
     }
 }
 
 impl From<glam::Mat4> for Transform4x4 {
-    /// Convert a [`glam::Mat4`] back to a [`Transform4x4`].
-    ///
-    /// Transposes from glam's column-major layout to the row-major `[f32; 16]` storage.
-    fn from(m: glam::Mat4) -> Self {
-        Self { matrix: m.transpose().to_cols_array() }
+    fn from(mat: glam::Mat4) -> Self {
+        Self { mat }
+    }
+}
+
+impl Default for Transform4x4 {
+    fn default() -> Self {
+        Self::identity()
+    }
+}
+
+impl std::ops::Mul for Transform4x4 {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self {
+        Self { mat: self.mat * rhs.mat }
+    }
+}
+
+impl serde::Serialize for Transform4x4 {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut st = s.serialize_struct("Transform4x4", 1)?;
+        st.serialize_field("matrix", &self.to_row_major())?;
+        st.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Transform4x4 {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Helper {
+            matrix: [f32; 16],
+        }
+        let h = Helper::deserialize(d)?;
+        Ok(Transform4x4::from_row_major(h.matrix))
     }
 }
 
@@ -257,12 +297,12 @@ mod tests {
     fn transform_point_translation_offsets_correctly() {
         // Translation-only matrix: identity rotation, tx=10, ty=20, tz=30
         #[rustfmt::skip]
-        let t = Transform4x4 { matrix: [
+        let t = Transform4x4::from_row_major([
             1.0, 0.0, 0.0, 10.0,
             0.0, 1.0, 0.0, 20.0,
             0.0, 0.0, 1.0, 30.0,
             0.0, 0.0, 0.0,  1.0,
-        ]};
+        ]);
         let p = t.transform_point(1.0, 2.0, 3.0);
         assert!((p.x - 11.0).abs() < 1e-5);
         assert!((p.y - 22.0).abs() < 1e-5);
@@ -273,17 +313,17 @@ mod tests {
 
     #[test]
     fn identity_diagonal_is_one() {
-        let t = Transform4x4::identity();
-        assert_eq!(t.matrix[0],  1.0); // [0,0]
-        assert_eq!(t.matrix[5],  1.0); // [1,1]
-        assert_eq!(t.matrix[10], 1.0); // [2,2]
-        assert_eq!(t.matrix[15], 1.0); // [3,3]
+        let m = Transform4x4::identity().to_row_major();
+        assert_eq!(m[0],  1.0); // [0,0]
+        assert_eq!(m[5],  1.0); // [1,1]
+        assert_eq!(m[10], 1.0); // [2,2]
+        assert_eq!(m[15], 1.0); // [3,3]
     }
 
     #[test]
     fn identity_off_diagonal_is_zero() {
-        let t = Transform4x4::identity();
-        for (i, &v) in t.matrix.iter().enumerate() {
+        let m = Transform4x4::identity().to_row_major();
+        for (i, &v) in m.iter().enumerate() {
             let row = i / 4;
             let col = i % 4;
             if row != col {
