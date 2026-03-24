@@ -78,8 +78,8 @@ pub fn project_to_depth_map(
 /// - `origin_x`     — world X of the grid's top-left corner
 /// - `origin_y`     — world Y of the grid's top-left corner
 /// - `resolution_m` — cell size in metres
-/// - `cols`         — grid width in cells
-/// - `rows`         — grid height in cells
+/// - `width`        — grid width in cells
+/// - `height`       — grid height in cells
 ///
 /// # Math
 /// For each point:
@@ -87,7 +87,7 @@ pub fn project_to_depth_map(
 /// col = floor((P_world.x − origin_x) / resolution_m)
 /// row = floor((P_world.y − origin_y) / resolution_m)
 /// ```
-/// Points outside `[0, cols) × [0, rows)` are silently skipped.
+/// Points outside `[0, width) × [0, height)` are silently skipped.
 /// Per cell, the **maximum Z** is retained (detects protrusions above the design surface).
 /// Cells with no point are initialised to `f32::NAN`.
 pub fn project_to_height_map(
@@ -95,10 +95,10 @@ pub fn project_to_height_map(
     origin_x: f32,
     origin_y: f32,
     resolution_m: f32,
-    cols: u32,
-    rows: u32,
+    width: u32,
+    height: u32,
 ) -> HeightMap {
-    let mut data = vec![f32::NAN; (cols * rows) as usize];
+    let mut data = vec![f32::NAN; (width * height) as usize];
 
     for p in &cloud.points {
         let col_f = (p.x - origin_x) / resolution_m;
@@ -111,17 +111,17 @@ pub fn project_to_height_map(
         let col = col_f.floor() as u32;
         let row = row_f.floor() as u32;
 
-        if col >= cols || row >= rows {
+        if col >= width || row >= height {
             continue;
         }
 
-        let idx = (row * cols + col) as usize;
+        let idx = (row * width + col) as usize;
         if data[idx].is_nan() || p.z > data[idx] {
             data[idx] = p.z;
         }
     }
 
-    HeightMap { origin_x, origin_y, resolution_m, cols, rows, data }
+    HeightMap { origin_x, origin_y, resolution_m, width, height, data }
 }
 
 #[cfg(test)]
