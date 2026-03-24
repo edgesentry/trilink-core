@@ -76,7 +76,31 @@ impl Transform4x4 {
     }
 }
 
-/// 3D world-space point.
+/// 3D world-space point, expressed in a **local coordinate frame**.
+///
+/// # Coordinate frame requirement
+///
+/// All coordinates must be local offsets from a nearby origin (e.g. the SLAM
+/// map origin or the scanner start position), **not** absolute geodetic values
+/// such as UTM easting/northing. Keeping coordinates local ensures that `f32`
+/// precision is adequate.
+///
+/// # Precision analysis
+///
+/// `f32` provides ~7 significant decimal digits (machine epsilon ≈ 1.2 × 10⁻⁷).
+/// At a coordinate magnitude of `M` metres, the representable step size is
+/// approximately `M × 1.2 × 10⁻⁷` metres:
+///
+/// | Max coordinate magnitude | Representable step | Adequate for 1 cm target? |
+/// |---|---|---|
+/// | 100 m (large building) | ~0.012 mm | Yes |
+/// | 1 km (city block) | ~0.12 mm | Yes |
+/// | 10 km | ~1.2 mm | Yes |
+/// | 100 km (UTM scale) | ~12 mm | **No** |
+///
+/// The system targets 1 cm accuracy over construction-site distances (≤ 1 km).
+/// `f32` is sufficient for this range. If absolute geodetic coordinates are
+/// ever required, convert to a local tangent-plane frame first.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Point3D {
     pub x: f32,

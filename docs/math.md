@@ -292,7 +292,24 @@ When implementing and debugging unprojection, these are typical values for a veh
 | `fx`, `fy` | 800–1500 pixels (typical automotive camera) |
 | `d` (depth) | 0.5–5.0 m |
 | `Xc`, `Yc` | ±1.5 m at 2 m depth |
-| `Xw`, `Yw`, `Zw` | site-scale metres, depends on map origin |
+| `Xw`, `Yw`, `Zw` | site-scale metres, local frame from map origin |
 | Point cloud size | 50K–500K points per sweep |
 | `resolution_m` (height map) | 0.005–0.02 m (5–20 mm per cell) |
 | Deviation threshold | 0.005–0.01 m (5–10 mm) |
+
+## Coordinate Precision and `f32`
+
+`Point3D` stores coordinates as `f32`. `f32` has machine epsilon ≈ 1.2 × 10⁻⁷, giving ~7 significant decimal digits.
+
+**Requirement:** all `Point3D` values must be expressed in a **local coordinate frame** — i.e. as offsets from a nearby origin such as the SLAM map start position, not as absolute geodetic coordinates (UTM, WGS-84).
+
+| Max coordinate magnitude | `f32` representable step | Adequate for 1 cm target? |
+|---|---|---|
+| 100 m (large building) | ~0.012 mm | Yes |
+| 1 km (city block) | ~0.12 mm | Yes |
+| 10 km | ~1.2 mm | Yes |
+| 100 km (UTM scale) | ~12 mm | **No** |
+
+The system targets 1 cm accuracy over construction-site distances (≤ 1 km). `f32` is sufficient. `CameraIntrinsics` uses `f64` and `transform_point` promotes to `f64` during the matrix multiply, so projection arithmetic is double-precision; only the final stored `Point3D` result is rounded to `f32`.
+
+If absolute geodetic coordinates are required in future, convert to a local tangent-plane frame (e.g. ENU centred on the site datum) before constructing `Point3D` values.
