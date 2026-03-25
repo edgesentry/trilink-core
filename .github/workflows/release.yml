@@ -47,13 +47,13 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build (release)
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --locked
 
       - name: Run tests with sqlite feature
-        run: cargo test --features sqlite
+        run: cargo test --locked --features sqlite
 
       - name: Install cargo-deny
         run: cargo deny --version 2>/dev/null || cargo install cargo-deny --locked
@@ -117,7 +117,7 @@ jobs:
             echo "trilink-core@${version} already exists on crates.io. Skipping."
           else
             echo "Publishing trilink-core@${version} ..."
-            cargo publish
+            cargo publish --locked
           fi
 
   publish_github_release:
