@@ -191,6 +191,71 @@ impl BBox2D {
             (self.v0 + self.v1) as f64 / 2.0,
         )
     }
+
+    /// Returns the area in pixels². Returns 0 for degenerate or inverted boxes.
+    pub fn area(&self) -> f32 {
+        (self.u1 - self.u0).max(0.0) * (self.v1 - self.v0).max(0.0)
+    }
+
+    /// Returns the Intersection-over-Union (IoU) with another bounding box.
+    ///
+    /// Returns 0.0 when either box has zero area or there is no overlap.
+    pub fn iou(&self, other: &BBox2D) -> f32 {
+        let inter_u0 = self.u0.max(other.u0);
+        let inter_v0 = self.v0.max(other.v0);
+        let inter_u1 = self.u1.min(other.u1);
+        let inter_v1 = self.v1.min(other.v1);
+
+        let inter_w = (inter_u1 - inter_u0).max(0.0);
+        let inter_h = (inter_v1 - inter_v0).max(0.0);
+        let intersection = inter_w * inter_h;
+
+        if intersection == 0.0 {
+            return 0.0;
+        }
+
+        let union = self.area() + other.area() - intersection;
+        if union <= 0.0 { 0.0 } else { intersection / union }
+    }
+
+    /// Unprojects the four corners of this box to 3D world-space points.
+    ///
+    /// Corners are returned in order: TL `(u0,v0)`, TR `(u1,v0)`, BR `(u1,v1)`, BL `(u0,v1)`.
+    /// Returns `None` for a corner if it falls outside the depth map or has no depth reading.
+    ///
+    /// Uses the same pinhole math as [`crate::bridge::unproject`]:
+    /// `P_camera = ((u - cx)/fx · d, (v - cy)/fy · d, d)`, then `P_world = pose · [P_camera, 1]ᵀ`.
+    pub fn unproject_corners(
+        &self,
+        depth_map: &DepthMap,
+        pose: &Transform4x4,
+        k: &CameraIntrinsics,
+    ) -> [Option<Point3D>; 4] {
+        let corners = [
+            (self.u0, self.v0), // TL
+            (self.u1, self.v0), // TR
+            (self.u1, self.v1), // BR
+            (self.u0, self.v1), // BL
+        ];
+
+        let mut result = [None; 4];
+        for (i, (u, v)) in corners.iter().enumerate() {
+            let pu = u.round() as i32;
+            let pv = v.round() as i32;
+            if pu < 0 || pv < 0 || pu >= depth_map.width as i32 || pv >= depth_map.height as i32 {
+                continue;
+            }
+            let depth = depth_map.get(pu as u32, pv as u32);
+            if !depth.is_finite() {
+                continue;
+            }
+            let d = depth as f64;
+            let xc = (*u as f64 - k.cx) / k.fx * d;
+            let yc = (*v as f64 - k.cy) / k.fy * d;
+            result[i] = Some(pose.transform_point(xc as f32, yc as f32, depth));
+        }
+        result
+    }
 }
 
 /// One LiDAR/ToF sweep: world-space points with optional per-point intensity.
@@ -281,6 +346,126 @@ mod tests {
     fn bbox_center_degenerate_zero_size() {
         let bbox = BBox2D { u0: 5.0, v0: 7.0, u1: 5.0, v1: 7.0 };
         assert_eq!(bbox.center(), (5.0, 7.0));
+    }
+
+    // --- BBox2D::area ---
+
+    #[test]
+    fn bbox_area_normal() {
+        let b = BBox2D { u0: 10.0, v0: 20.0, u1: 30.0, v1: 40.0 };
+        assert!((b.area() - 400.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn bbox_area_zero_size() {
+        let b = BBox2D { u0: 5.0, v0: 5.0, u1: 5.0, v1: 5.0 };
+        assert_eq!(b.area(), 0.0);
+    }
+
+    #[test]
+    fn bbox_area_inverted_returns_zero() {
+        // u1 < u0 is degenerate — area must be 0, not negative
+        let b = BBox2D { u0: 30.0, v0: 0.0, u1: 10.0, v1: 10.0 };
+        assert_eq!(b.area(), 0.0);
+    }
+
+    // --- BBox2D::iou ---
+
+    #[test]
+    fn iou_identical_boxes_is_one() {
+        let b = BBox2D { u0: 0.0, v0: 0.0, u1: 10.0, v1: 10.0 };
+        assert!((b.iou(&b) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn iou_non_overlapping_is_zero() {
+        let a = BBox2D { u0: 0.0, v0: 0.0, u1: 10.0, v1: 10.0 };
+        let b = BBox2D { u0: 20.0, v0: 20.0, u1: 30.0, v1: 30.0 };
+        assert_eq!(a.iou(&b), 0.0);
+    }
+
+    #[test]
+    fn iou_partial_overlap() {
+        // a: [0,10]×[0,10] area=100
+        // b: [5,15]×[5,15] area=100
+        // intersection: [5,10]×[5,10] = 25
+        // union: 100+100-25 = 175
+        // IoU = 25/175 ≈ 0.1429
+        let a = BBox2D { u0: 0.0, v0: 0.0, u1: 10.0, v1: 10.0 };
+        let b = BBox2D { u0: 5.0, v0: 5.0, u1: 15.0, v1: 15.0 };
+        let iou = a.iou(&b);
+        assert!((iou - 25.0_f32 / 175.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn iou_contained_box() {
+        // inner fully inside outer: IoU = inner_area / outer_area
+        let outer = BBox2D { u0: 0.0, v0: 0.0, u1: 10.0, v1: 10.0 };
+        let inner = BBox2D { u0: 2.0, v0: 2.0, u1: 8.0, v1: 8.0 };
+        // intersection=36, union=100, IoU=0.36
+        let iou = outer.iou(&inner);
+        assert!((iou - 0.36_f32).abs() < 1e-4);
+    }
+
+    // --- BBox2D::unproject_corners ---
+
+    #[test]
+    fn unproject_corners_identity_principal_point() {
+        // Box centred exactly at principal point (cx=5, cy=5) of a 10×10 depth map.
+        // depth = 2.0 m everywhere; fx=fy=10.
+        // TL=(4,4): xc=(4-5)/10·2=-0.2, yc=-0.2, z=2  → P(-0.2,-0.2,2)
+        let dm = DepthMap { width: 10, height: 10, data: vec![2.0_f32; 100] };
+        let pose = Transform4x4::identity();
+        let k = CameraIntrinsics { fx: 10.0, fy: 10.0, cx: 5.0, cy: 5.0 };
+        let bbox = BBox2D { u0: 4.0, v0: 4.0, u1: 6.0, v1: 6.0 };
+
+        let corners = bbox.unproject_corners(&dm, &pose, &k);
+        // All four corners should unproject (all within 10×10 map, all have depth)
+        assert!(corners.iter().all(|c| c.is_some()), "all corners should unproject");
+
+        // TL corner: u=4, v=4 → xc=(4-5)/10·2=-0.2, yc=-0.2
+        let tl = corners[0].unwrap();
+        assert!((tl.x - (-0.2_f32)).abs() < 1e-4);
+        assert!((tl.y - (-0.2_f32)).abs() < 1e-4);
+        assert!((tl.z - 2.0_f32).abs() < 1e-4);
+    }
+
+    #[test]
+    fn unproject_corners_out_of_bounds_returns_none() {
+        // 5×5 depth map; bbox has corners outside the map
+        let dm = DepthMap { width: 5, height: 5, data: vec![1.0_f32; 25] };
+        let pose = Transform4x4::identity();
+        let k = CameraIntrinsics { fx: 1.0, fy: 1.0, cx: 2.0, cy: 2.0 };
+        // u1=10 and v1=10 are outside the 5×5 map → TR, BR, BL may be None
+        let bbox = BBox2D { u0: 1.0, v0: 1.0, u1: 10.0, v1: 10.0 };
+
+        let corners = bbox.unproject_corners(&dm, &pose, &k);
+        // TL=(1,1) is in bounds → Some
+        assert!(corners[0].is_some(), "TL (1,1) should be in bounds");
+        // TR=(10,1), BR=(10,10), BL=(1,10) are out of bounds → None
+        assert!(corners[1].is_none(), "TR (10,1) should be out of bounds");
+        assert!(corners[2].is_none(), "BR (10,10) should be out of bounds");
+        assert!(corners[3].is_none(), "BL (1,10) should be out of bounds");
+    }
+
+    #[test]
+    fn unproject_corners_no_depth_returns_none() {
+        // Depth map with INFINITY (no depth) at corner pixels
+        let mut data = vec![f32::INFINITY; 100];
+        // Only put finite depth at pixel (2,2) = index v*10+u = 22
+        data[2 * 10 + 2] = 3.0;
+        let dm = DepthMap { width: 10, height: 10, data };
+        let pose = Transform4x4::identity();
+        let k = CameraIntrinsics { fx: 10.0, fy: 10.0, cx: 5.0, cy: 5.0 };
+        // bbox corners: TL=(2,2), TR=(8,2), BR=(8,8), BL=(2,8)
+        let bbox = BBox2D { u0: 2.0, v0: 2.0, u1: 8.0, v1: 8.0 };
+
+        let corners = bbox.unproject_corners(&dm, &pose, &k);
+        // Only TL=(2,2) has depth
+        assert!(corners[0].is_some(), "TL should have depth");
+        assert!(corners[1].is_none(), "TR should have no depth");
+        assert!(corners[2].is_none(), "BR should have no depth");
+        assert!(corners[3].is_none(), "BL should have no depth");
     }
 
     // --- Transform4x4::transform_point ---
