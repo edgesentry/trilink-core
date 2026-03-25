@@ -1,4 +1,4 @@
-use crate::{CameraIntrinsics, DepthMap, HeightMap, PointCloud, Transform4x4};
+use crate::{CameraIntrinsics, DepthMap, HeightMap, Point3D, PointCloud, Transform4x4};
 
 /// Project a 3D world-space point cloud onto a 2D depth map.
 ///
@@ -56,6 +56,49 @@ pub fn project_to_depth_map(
     }
 
     DepthMap { width, height, data }
+}
+
+/// Projects a single world-space point to a pixel coordinate.
+///
+/// # Arguments
+/// - `point`  — 3D point in world space
+/// - `pose`   — camera pose `T_cam_to_world` (same convention as [`project_to_depth_map`])
+/// - `k`      — pinhole camera intrinsics
+/// - `width`  — image width in pixels
+/// - `height` — image height in pixels
+///
+/// # Math
+/// 1. **World → camera**: `P_camera = pose⁻¹ · P_world`
+/// 2. **Behind-camera cull**: returns `None` if `Zc ≤ 0`
+/// 3. **Pinhole projection**: `u = fx·(Xc/Zc) + cx`, `v = fy·(Yc/Zc) + cy`
+/// 4. **Bounds cull**: returns `None` if outside `[0, width) × [0, height)`
+///
+/// # Returns
+/// `Some((u, v))` — integer pixel coordinate — or `None` if the point is behind the
+/// camera or outside the image.
+pub fn project_point(
+    point: &Point3D,
+    pose: &Transform4x4,
+    k: &CameraIntrinsics,
+    width: u32,
+    height: u32,
+) -> Option<(u32, u32)> {
+    let world_to_cam = pose.mat.inverse();
+    let pc = world_to_cam.transform_point3(glam::vec3(point.x, point.y, point.z));
+
+    if pc.z <= 0.0 {
+        return None;
+    }
+
+    let zc = pc.z as f64;
+    let u = k.fx * (pc.x as f64 / zc) + k.cx;
+    let v = k.fy * (pc.y as f64 / zc) + k.cy;
+
+    if u < 0.0 || v < 0.0 || u >= width as f64 || v >= height as f64 {
+        return None;
+    }
+
+    Some((u as u32, v as u32))
 }
 
 /// Project a 3D world-space point cloud onto a top-down height map.
@@ -230,6 +273,73 @@ mod tests {
     fn empty_cloud_produces_all_infinity() {
         let dm = project_to_depth_map(&cloud(vec![]), &identity(), &k(), 4, 4);
         assert!(dm.data.iter().all(|v| v.is_infinite()));
+    }
+
+    // --- project_point ---
+
+    // Principal-axis point → pixel at (cx, cy).
+    #[test]
+    fn project_point_principal_axis() {
+        // P_world=(0,0,3) with identity pose + k(fx=800,cx=960,fy=800,cy=540):
+        // u = 800*(0/3)+960 = 960, v = 540
+        let p = Point3D { x: 0.0, y: 0.0, z: 3.0 };
+        let px = project_point(&p, &identity(), &k(), 1920, 1080);
+        assert_eq!(px, Some((960, 540)));
+    }
+
+    // Point at 45° horizontal (Xc = Zc) → u = cx + fx.
+    #[test]
+    fn project_point_45_degrees_horizontal() {
+        // P_world=(2,0,2) → u = 800*(2/2)+960 = 1760, v = 540
+        let p = Point3D { x: 2.0, y: 0.0, z: 2.0 };
+        let px = project_point(&p, &identity(), &k(), 1920, 1080);
+        assert_eq!(px, Some((1760, 540)));
+    }
+
+    // Point behind the camera → None.
+    #[test]
+    fn project_point_behind_camera_returns_none() {
+        let p = Point3D { x: 0.0, y: 0.0, z: -1.0 };
+        assert_eq!(project_point(&p, &identity(), &k(), 1920, 1080), None);
+    }
+
+    // Point at exactly z=0 → None (degenerate).
+    #[test]
+    fn project_point_at_z_zero_returns_none() {
+        let p = Point3D { x: 0.0, y: 0.0, z: 0.0 };
+        assert_eq!(project_point(&p, &identity(), &k(), 1920, 1080), None);
+    }
+
+    // Point projecting outside image bounds → None.
+    #[test]
+    fn project_point_out_of_bounds_returns_none() {
+        // P_world=(1000,0,1) → u = 800*1000+960 >> 1920
+        let p = Point3D { x: 1000.0, y: 0.0, z: 1.0 };
+        assert_eq!(project_point(&p, &identity(), &k(), 1920, 1080), None);
+    }
+
+    // Point exactly on the right edge of the image (u = width) → None (exclusive upper bound).
+    #[test]
+    fn project_point_on_right_edge_is_culled() {
+        // We need u = 1920.0 exactly: (x/z)*fx + cx = 1920 → x/z = (1920-960)/800 = 1.2
+        // So P_world = (1.2, 0, 1)
+        let p = Point3D { x: 1.2, y: 0.0, z: 1.0 };
+        assert_eq!(project_point(&p, &identity(), &k(), 1920, 1080), None);
+    }
+
+    // Round-trip: project_point(unproject_bbox_centre) == original pixel.
+    #[test]
+    fn project_point_unproject_roundtrip() {
+        use crate::BBox2D;
+        use crate::bridge::unproject::unproject;
+
+        // Start from pixel (1000, 600) at depth 2.0 m, identity pose.
+        let bbox = BBox2D { u0: 1000.0, v0: 600.0, u1: 1000.0, v1: 600.0 };
+        let world_pt = unproject(&bbox, Some(2.0), 2.0, &k(), &identity());
+
+        // Project back → should recover (1000, 600).
+        let px = project_point(&world_pt, &identity(), &k(), 1920, 1080);
+        assert_eq!(px, Some((1000, 600)));
     }
 
     // --- project_to_height_map ---
