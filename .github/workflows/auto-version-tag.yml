@@ -66,23 +66,7 @@ jobs:
         if: ${{ steps.guard.outputs.is_release_commit != 'true' }}
         run: |
           LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)
-          CURRENT_VERSION=$(python3 - <<'PY2'
-import re
-from pathlib import Path
-text = Path('Cargo.toml').read_text(encoding='utf-8')
-section = None
-for line in text.splitlines():
-  s = line.strip()
-  if s.startswith('[') and s.endswith(']'):
-    section = s
-    continue
-  if section == '[package]' and s.startswith('version = '):
-    m = re.search(r'"([0-9]+\.[0-9]+\.[0-9]+)"', s)
-    if m:
-      print(m.group(1))
-      break
-PY2
-          )
+          CURRENT_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
 
           if [[ -z "$LAST_TAG" ]]; then
             echo "No previous tag found. Using current version: $CURRENT_VERSION"
@@ -101,12 +85,9 @@ PY2
 
             IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
             case "$BUMP_KIND" in
-              major)
-                MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-              minor)
-                MINOR=$((MINOR + 1)); PATCH=0 ;;
-              patch)
-                PATCH=$((PATCH + 1)) ;;
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              patch) PATCH=$((PATCH + 1)) ;;
             esac
             NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           fi
@@ -137,28 +118,8 @@ PY2
 
       - name: Update version in Cargo.toml
         if: ${{ steps.guard.outputs.is_release_commit != 'true' && steps.tag_check.outputs.tag_exists != 'true' && steps.semver.outputs.next_version != steps.semver.outputs.current_version }}
-        env:
-          NEXT_VERSION: ${{ steps.semver.outputs.next_version }}
         run: |
-          python3 - <<'PY2'
-import os, re
-from pathlib import Path
-next_version = os.environ['NEXT_VERSION']
-path = Path('Cargo.toml')
-lines = path.read_text(encoding='utf-8').splitlines()
-section = None
-updated = []
-for line in lines:
-  stripped = line.strip()
-  if stripped.startswith('[') and stripped.endswith(']'):
-    section = stripped
-    updated.append(line)
-    continue
-  if section == '[package]' and stripped.startswith('version = '):
-    line = re.sub(r'"[0-9]+\.[0-9]+\.[0-9]+"', f'"{next_version}"', line)
-  updated.append(line)
-path.write_text('\n'.join(updated) + '\n', encoding='utf-8')
-PY2
+          sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*\"/version = \"${{ steps.semver.outputs.next_version }}\"/" Cargo.toml
 
       - name: Sync Cargo.lock
         if: ${{ steps.guard.outputs.is_release_commit != 'true' && steps.tag_check.outputs.tag_exists != 'true' && steps.semver.outputs.next_version != steps.semver.outputs.current_version }}
