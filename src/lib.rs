@@ -43,6 +43,42 @@ pub struct CameraIntrinsics {
     pub cy: f64,
 }
 
+impl CameraIntrinsics {
+    /// Create intrinsics from a horizontal field of view, with the principal
+    /// point at the image centre (`cx = width/2`, `cy = height/2`).
+    ///
+    /// Computes `fx = fy = (width/2) / tan(hfov_rad/2)`.
+    ///
+    /// # Example
+    /// ```
+    /// # use trilink_core::CameraIntrinsics;
+    /// // 90° horizontal FOV on a 1920×1080 sensor
+    /// let k = CameraIntrinsics::from_fov(1920, 1080, std::f64::consts::FRAC_PI_2);
+    /// assert!((k.fx - 960.0).abs() < 1e-9);
+    /// assert_eq!(k.cx, 960.0);
+    /// assert_eq!(k.cy, 540.0);
+    /// ```
+    pub fn from_fov(width: u32, height: u32, hfov_rad: f64) -> Self {
+        let fx = (width as f64 / 2.0) / (hfov_rad / 2.0).tan();
+        Self { fx, fy: fx, cx: width as f64 / 2.0, cy: height as f64 / 2.0 }
+    }
+
+    /// Create intrinsics with explicit focal lengths and the principal point at
+    /// the image centre (`cx = width/2`, `cy = height/2`).
+    ///
+    /// # Example
+    /// ```
+    /// # use trilink_core::CameraIntrinsics;
+    /// let k = CameraIntrinsics::from_focal(1920, 1080, 800.0, 800.0);
+    /// assert_eq!(k.fx, 800.0);
+    /// assert_eq!(k.cx, 960.0);
+    /// assert_eq!(k.cy, 540.0);
+    /// ```
+    pub fn from_focal(width: u32, height: u32, fx: f64, fy: f64) -> Self {
+        Self { fx, fy, cx: width as f64 / 2.0, cy: height as f64 / 2.0 }
+    }
+}
+
 /// Homogeneous 4×4 transform (platform pose in world frame).
 ///
 /// Wraps a [`glam::Mat4`] directly for zero-overhead SIMD arithmetic, inversion,
@@ -261,6 +297,44 @@ mod nan_as_null_vec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- CameraIntrinsics constructors ---
+
+    #[test]
+    fn from_fov_90_degrees_1920x1080() {
+        // 90° hfov → tan(45°) = 1 → fx = width/2 = 960
+        let k = CameraIntrinsics::from_fov(1920, 1080, std::f64::consts::FRAC_PI_2);
+        assert!((k.fx - 960.0).abs() < 1e-9, "fx should equal width/2 for 90° FOV");
+        assert!((k.fy - 960.0).abs() < 1e-9, "fy should equal fx");
+        assert_eq!(k.cx, 960.0);
+        assert_eq!(k.cy, 540.0);
+    }
+
+    #[test]
+    fn from_fov_60_degrees_640x480() {
+        // 60° hfov → tan(30°) = 1/√3 → fx = 320 * √3 ≈ 554.256
+        let k = CameraIntrinsics::from_fov(640, 480, std::f64::consts::PI / 3.0);
+        let expected_fx = 320.0 / (std::f64::consts::PI / 6.0).tan();
+        assert!((k.fx - expected_fx).abs() < 1e-9);
+        assert_eq!(k.cx, 320.0);
+        assert_eq!(k.cy, 240.0);
+    }
+
+    #[test]
+    fn from_focal_sets_fields_and_centres_principal_point() {
+        let k = CameraIntrinsics::from_focal(1920, 1080, 800.0, 600.0);
+        assert_eq!(k.fx, 800.0);
+        assert_eq!(k.fy, 600.0);
+        assert_eq!(k.cx, 960.0);
+        assert_eq!(k.cy, 540.0);
+    }
+
+    #[test]
+    fn from_focal_square_sensor() {
+        let k = CameraIntrinsics::from_focal(512, 512, 400.0, 400.0);
+        assert_eq!(k.cx, 256.0);
+        assert_eq!(k.cy, 256.0);
+    }
 
     // --- BBox2D::center ---
 
