@@ -363,4 +363,3 @@ The following are real problems but belong to a higher layer:
 | MLIT / CONQUAS equivalence documentation | commercial compliance layer |
 | Tamper-evidence / electronic signature | `edgesentry-audit` |
 | Multi-pose capture scheduling | sensor platform firmware |
-| 1D time-series inference (NEA/PUB water grid, NEA vibration monitoring) | Application inference layer; uses PatchTST/iTransformer on raw sensor streams — no spatial computation required |
