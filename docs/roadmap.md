@@ -271,6 +271,28 @@ The inference module in `edgesentry-inspect` consumes `RgbdFrame` to build a 4-c
 
 ---
 
+### CP3 · Temporal scan delta (T0/T1 change detection)
+
+**Limitation:** The existing deviation engine compares an as-built scan against an IFC design reference. There is no primitive for comparing two scanned clouds from different inspection dates (T0 → T1), which is required for change-detection workflows.
+
+**Change:** Add `bridge/delta.rs`:
+
+```rust
+/// Compute per-point deviation between two scanned point clouds.
+///
+/// For each point in `cloud_t1`, finds the nearest neighbour in `cloud_t0`
+/// and returns the signed distance (positive = protrusion, negative = recession).
+/// Structurally identical to the existing deviation engine — the only difference
+/// is that both inputs are scanned data rather than IFC-design vs. as-built.
+pub fn scan_delta(t0: &PointCloud, t1: &PointCloud, threshold_mm: f32) -> DeviationReport
+```
+
+`DeviationReport` is the same type produced by the IFC-vs-scan deviation engine — downstream heatmap, report, and CLI code is unchanged.
+
+**Acceptance test:** T0 flat cloud, T1 = T0 with one point raised by 10 mm → `max_deviation_mm ≈ 10.0`, `compliant_pct < 1.0`.
+
+---
+
 ### CP2 · IFC write-back data structures
 
 **Limitation:** L8 — AI detection results cannot be written back into an IFC 4.3 model as
@@ -324,6 +346,7 @@ O3 (perf benchmarks)          — requires A1, A3
 
 CP1 (RgbdFrame)               — standalone; consumed by edgesentry-inspect M6 RGB-D extension
 CP2 (IFC annotation types)    — standalone; consumed by edgesentry-inspect M7
+CP3 (scan_delta T0/T1)        — standalone; consumed by edgesentry-inspect M4.6
 ```
 
 ---
