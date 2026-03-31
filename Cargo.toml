@@ -9,16 +9,10 @@ description = "Open-source core: pose buffer, unprojection math, and shared type
 name = "trilink_core"
 path = "src/lib.rs"
 
-[features]
-default = []
-sqlite  = ["rusqlite"]
-
 [dependencies]
 serde      = { version = "1", features = ["derive"] }
 thiserror  = "2"
-rusqlite   = { version = "0.39", optional = true, features = ["bundled"] }
-glam = { version = "0.32.1", features = ["serde"] }
+glam       = { version = "0.32.1", features = ["serde"] }
 
 [dev-dependencies]
 serde_json = "1"
-tokio      = { version = "1", features = ["rt", "macros"] }

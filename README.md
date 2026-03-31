@@ -16,16 +16,28 @@ Image space  →  Camera space  →  World space
 
 It also reflects the three systems it connects — sensor platform, inference service, and application — and the two gaps it bridges between them: the **time gap** (inference latency vs. platform motion) and the **space gap** (pixel coordinates vs. 3D world coordinates).
 
+## Crate placement principle
+
+`trilink-core` is **pure geometry and math only**. Every line of code in this crate must be justifiable as a mathematical primitive that is reusable across any inspection domain.
+
+| Layer | Crate | What belongs there |
+|---|---|---|
+| Pure math / geometry | **`trilink-core`** (this crate) | Pinhole projection/unprojection, pose buffer with LERP/SLERP, math types (`Transform4x4`, `CameraIntrinsics`, `BBox2D`, …) |
+| OSS inspection pipeline | **`edgesentry-inspect`** | Sensor ingress (`FrameSource`, `SensorFrame`, `MockSource`), IFC loading, PLY parsing, scan pipeline, OSS report |
+| Commercial application | **`edgesentry-app`** | SQLite egress, BIM server client, PDF compliance reports, Tauri UI |
+
+If a feature depends on I/O, networking, a specific file format, or commercial tooling, it does **not** belong in `trilink-core`.
+
 ## What's in the crate
 
 | Module | What it does |
 |---|---|
 | `buffer::PoseBuffer` | Ring buffer of platform poses indexed by timestamp. O(log n) lookup by `capture_ts_us`. |
 | `bridge::unproject` | Pinhole unprojection: pixel `(u, v)` + depth → camera space → world `(X, Y, Z)`. |
-| `ingress::FrameSource` | Trait for streaming sensor frames (implement for your hardware). |
-| `ingress::MockSource` | Deterministic frame source for testing, no hardware required. |
-| Core types | `FusionPacket`, `Detection`, `BBox2D`, `Transform4x4`, `CameraIntrinsics`, `Point3D` |
-| `TriError` | Unified error type (`thiserror`). |
+| `bridge::project_to_depth_map` | Projects a point cloud to a per-pixel depth map. |
+| `bridge::project_to_height_map` | Projects a point cloud to a top-down height grid. |
+| Core types | `FusionPacket`, `Detection`, `BBox2D`, `Transform4x4`, `CameraIntrinsics`, `Point3D`, `PointCloud`, `DepthMap`, `HeightMap` |
+| `TriError` | Unified error type (`thiserror`) — math errors only (`PoseNotFound`, `Io`, `Config`). |
 
 ## Usage
 
@@ -33,24 +45,12 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-trilink-core = { git = "https://github.com/edgesentry/tri-link-core.git", branch = "main" }
+trilink-core = { git = "https://github.com/edgesentry/trilink-core.git", branch = "main" }
 ```
 
-### Implement `FrameSource` for your hardware
-
-```rust
-use trilink_core::ingress::{FrameSource, SensorFrame};
-use trilink_core::TriError;
-
-struct MyPlatform { /* ... */ }
-
-impl FrameSource for MyPlatform {
-    fn next_frame(&mut self) -> Result<SensorFrame, TriError> {
-        // pull pose + image from your platform SDK
-        todo!()
-    }
-}
-```
+> **Sensor ingress** (`FrameSource`, `SensorFrame`, `MockSource`) has moved to
+> [`edgesentry-inspect`](https://github.com/edgesentry/edgesentry-rs) as part of
+> the crate placement principle above. Implement `FrameSource` from that crate.
 
 ### Buffer poses and look up by timestamp
 
@@ -83,9 +83,7 @@ let world_pos = unproject(
 
 ## Features
 
-| Feature | Default | Description |
-|---|---|---|
-| `sqlite` | off | Enables `rusqlite` dependency for SQLite output |
+`trilink-core` has no optional features. SQLite support has moved to `edgesentry-app`.
 
 ## Documentation
 

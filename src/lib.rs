@@ -1,11 +1,14 @@
 pub mod buffer;
 pub mod bridge;
 pub mod error;
-pub mod ingress;
 
 pub use error::TriError;
 
 /// One complete detection event: image capture with pose, intrinsics, and inference results.
+///
+/// Pure math/geometry carrier — no raw bytes or I/O concerns.
+/// Callers that need to associate a JPEG image with this packet should carry
+/// the bytes externally (e.g. `edgesentry_app::AppFrame`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FusionPacket {
     /// Image capture time (microseconds since UNIX epoch).
@@ -14,8 +17,6 @@ pub struct FusionPacket {
     pub pose: Transform4x4,
     /// Static camera calibration parameters.
     pub camera_k: CameraIntrinsics,
-    /// Raw JPEG frame that was sent to the inference service.
-    pub image_jpeg: Vec<u8>,
     /// Inference results with world coordinates resolved.
     pub detections: Vec<Detection>,
 }
@@ -599,7 +600,6 @@ mod tests {
             capture_ts_us: 42_000_000,
             pose: Transform4x4::identity(),
             camera_k: CameraIntrinsics { fx: 800.0, fy: 800.0, cx: 960.0, cy: 540.0 },
-            image_jpeg: vec![0xff, 0xd8, 0xff, 0xd9],
             detections: vec![Detection {
                 class: "scratch".to_string(),
                 confidence: 0.92,
