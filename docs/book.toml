@@ -1,0 +1,13 @@
+[book]
+title = "trilink-core"
+description = "Open-source core: pose buffer, unprojection math, and shared types for sensor-vision spatial fusion"
+authors = ["trilink-core contributors"]
+language = "en"
+src = "."
+
+[build]
+build-dir = "../target/book"
+
+[output.html]
+git-repository-url = "https://github.com/edgesentry/trilink-core"
+edit-url-template = "https://github.com/edgesentry/trilink-core/edit/main/docs/{path}"

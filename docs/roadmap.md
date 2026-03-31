@@ -293,7 +293,6 @@ pub fn scan_delta(t0: &PointCloud, t1: &PointCloud, threshold_mm: f32) -> Deviat
 
 ---
 
-
 ### CP2 · IFC write-back data structures
 
 **Limitation:** L8 — AI detection results cannot be written back into an IFC 4.3 model as
