@@ -48,8 +48,8 @@ jobs:
 
       - name: Assemble site
         run: |
-          mkdir -p site/api
-          cp -r target/book/. site/
+          mkdir -p site/docs site/api
+          cp -r target/book/. site/docs/
           cp -r target/doc/. site/api/
           # Root redirect → docs book
           echo '<meta http-equiv="refresh" content="0; url=docs/">' > site/index.html
