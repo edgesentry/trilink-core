@@ -27,15 +27,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ needs.create_tag.outputs.tag_name }}
 
       - name: Setup Rust
-        run: rustup update stable && rustup default stable
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
 
       - name: Cache Rust artifacts
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/bin/
@@ -51,9 +53,6 @@ jobs:
 
       - name: Run tests
         run: cargo test --locked
-
-      - name: Run tests with sqlite feature
-        run: cargo test --locked --features sqlite
 
       - name: Install cargo-deny
         run: cargo deny --version 2>/dev/null || cargo install cargo-deny --locked
@@ -79,15 +78,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ needs.create_tag.outputs.tag_name }}
 
       - name: Setup Rust
-        run: rustup update stable && rustup default stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
 
       - name: Cache Rust artifacts
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/bin/

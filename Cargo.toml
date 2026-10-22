@@ -1,7 +1,8 @@
 [package]
 name        = "trilink-core"
-version     = "0.1.1"
+version     = "0.2.0"
 edition     = "2021"
+rust-version = "1.85"
 license     = "MIT OR Apache-2.0"
 description = "Open-source core: pose buffer, unprojection math, and shared types for sensor-vision spatial fusion"
 
@@ -12,7 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 serde      = { version = "1", features = ["derive"] }
 thiserror  = "2"
-glam       = { version = "0.33", features = ["serde"] }
+glam       = { version = "0.34", features = ["serde"] }
 
 [dev-dependencies]
 serde_json = "1"

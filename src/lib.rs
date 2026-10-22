@@ -260,7 +260,7 @@ impl BBox2D {
     /// Corners are returned in order: TL `(u0,v0)`, TR `(u1,v0)`, BR `(u1,v1)`, BL `(u0,v1)`.
     /// Returns `None` for a corner if it falls outside the depth map or has no depth reading.
     ///
-    /// Uses the same pinhole math as [`crate::bridge::unproject`]:
+    /// Uses the same pinhole math as [`crate::bridge::unproject()`]:
     /// `P_camera = ((u - cx)/fx · d, (v - cy)/fy · d, d)`, then `P_world = pose · [P_camera, 1]ᵀ`.
     pub fn unproject_corners(
         &self,
