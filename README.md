@@ -45,6 +45,16 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
+trilink-core = "0.2"
+# Public API exposes glam types (e.g. Transform4x4.mat: glam::Mat4).
+# Dependents must use glam 0.34 with a compatible feature set (serde if needed).
+glam = { version = "0.34", features = ["serde"] }
+```
+
+Or from git:
+
+```toml
+[dependencies]
 trilink-core = { git = "https://github.com/edgesentry/trilink-core.git", branch = "main" }
 ```
 
