@@ -123,6 +123,16 @@ impl PoseBuffer {
                 Some(p.pose)
             }
 
+            // Both brackets are farther than tolerance_us from the query.
+            // Do not invent a pose in that gap. One bracket inside the
+            // window still interpolates (tolerance is inclusive).
+            (Some(p), Some(s))
+                if p.ts_us.abs_diff(capture_ts_us) > self.tolerance_us
+                    && s.ts_us.abs_diff(capture_ts_us) > self.tolerance_us =>
+            {
+                None
+            }
+
             // Strictly bracketed — interpolate.
             (Some(p), Some(s)) => {
                 // Compute t in [0, 1].
@@ -349,5 +359,45 @@ mod tests {
         assert!(buf.pose_at(950_000).is_some(),  "50 ms before — within tolerance");
         assert!(buf.pose_at(1_050_000).is_some(), "50 ms after — within tolerance");
         assert!(buf.pose_at(1_200_000).is_none(), "200 ms after — outside tolerance");
+    }
+
+    #[test]
+    fn both_brackets_outside_tolerance_returns_none() {
+        let mut buf = PoseBuffer::new(8, 200_000);
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 0.0)) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(10.0, 0.0, 0.0)) };
+        buf.push(1_000_000, pose_a);
+        buf.push(2_000_000, pose_b);
+        // Midpoint is 500 ms from each sample, past the 200 ms tolerance.
+        // The documented contract is None when both brackets are outside tolerance.
+        assert!(
+            buf.pose_at(1_500_000).is_none(),
+            "interpolation must not skip the tolerance gate"
+        );
+    }
+
+    #[test]
+    fn both_brackets_at_tolerance_boundary_still_interpolate() {
+        let mut buf = PoseBuffer::new(8, 200_000);
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 0.0)) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(4.0, 0.0, 0.0)) };
+        buf.push(1_000_000, pose_a);
+        buf.push(1_400_000, pose_b);
+        // Exactly 200 ms from each bracket — tolerance is inclusive (`<=`).
+        let result = buf.pose_at(1_200_000).unwrap();
+        assert!((result.mat.w_axis.x - 2.0).abs() < 1e-5, "boundary is inside tolerance");
+    }
+
+    #[test]
+    fn one_bracket_within_tolerance_still_interpolates() {
+        let mut buf = PoseBuffer::new(8, 200_000);
+        let pose_a = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 0.0)) };
+        let pose_b = Transform4x4 { mat: glam::Mat4::from_translation(glam::vec3(10.0, 0.0, 0.0)) };
+        buf.push(1_000_000, pose_a);
+        buf.push(2_000_000, pose_b);
+        // 100 ms after the first sample (inside) and 900 ms before the second (outside).
+        // t = 0.1, so x = 1.0. A single in-window bracket still interpolates.
+        let result = buf.pose_at(1_100_000).expect("closer bracket is inside tolerance");
+        assert!((result.mat.w_axis.x - 1.0).abs() < 1e-5);
     }
 }

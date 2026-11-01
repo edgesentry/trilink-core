@@ -38,18 +38,27 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      - name: Set cargo cache scope
+        id: cargo_cache_scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          scope="$(printf '%s-%s' "$EVENT_NAME" "$REF" | tr -c 'A-Za-z0-9_-' '-')"
+          echo "scope=${scope}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust artifacts
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         continue-on-error: true
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-
 
       - name: Build
         run: cargo build
@@ -74,7 +83,7 @@ jobs:
           rustup default stable
 
       - name: Install cargo-deny
-        run: cargo deny --version 2>/dev/null || cargo install cargo-deny --locked
+        run: cargo deny --version 2>/dev/null | grep -Eq '^cargo-deny 0\.20\.2($|[[:space:]])' || cargo install cargo-deny --version 0.20.2 --locked
 
       - name: Check licenses
         run: cargo deny check licenses
@@ -95,7 +104,7 @@ jobs:
           rustup default stable
 
       - name: Install cargo-audit
-        run: cargo audit --version 2>/dev/null || cargo install cargo-audit --locked
+        run: cargo audit --version 2>/dev/null | grep -Eq '^cargo-audit 0\.22\.2($|[[:space:]])' || cargo install cargo-audit --version 0.22.2 --locked
 
       - name: Run security audit
         run: cargo audit
@@ -115,24 +124,33 @@ jobs:
           rustup toolchain install stable --profile minimal --component clippy
           rustup default stable
 
+      - name: Set cargo cache scope
+        id: cargo_cache_scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          scope="$(printf '%s-%s' "$EVENT_NAME" "$REF" | tr -c 'A-Za-z0-9_-' '-')"
+          echo "scope=${scope}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust artifacts
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         continue-on-error: true
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-
 
       - name: Clippy (deny warnings)
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Install cargo-deny
-        run: cargo deny --version 2>/dev/null || cargo install cargo-deny --locked
+        run: cargo deny --version 2>/dev/null | grep -Eq '^cargo-deny 0\.20\.2($|[[:space:]])' || cargo install cargo-deny --version 0.20.2 --locked
 
       - name: Deny vulnerable advisories
         run: cargo deny check advisories
@@ -156,18 +174,27 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      - name: Set cargo cache scope
+        id: cargo_cache_scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          scope="$(printf '%s-%s' "$EVENT_NAME" "$REF" | tr -c 'A-Za-z0-9_-' '-')"
+          echo "scope=${scope}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust artifacts
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         continue-on-error: true
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-
 
       - name: Publish dry-run
         run: cargo publish --dry-run --locked
