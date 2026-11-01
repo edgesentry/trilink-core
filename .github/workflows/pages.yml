@@ -26,6 +26,15 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      - name: Set cargo cache scope
+        id: cargo_cache_scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          scope="$(printf '%s-%s' "$EVENT_NAME" "$REF" | tr -c 'A-Za-z0-9_-' '-')"
+          echo "scope=${scope}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust artifacts
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -34,11 +43,11 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ steps.cargo_cache_scope.outputs.scope }}-
 
       - name: Install mdBook
-        run: cargo install mdbook --locked
+        run: cargo install mdbook --version 0.5.4 --locked
 
       - name: Build docs (mdBook)
         run: mdbook build docs/
