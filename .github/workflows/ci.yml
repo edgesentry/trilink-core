@@ -40,6 +40,7 @@ jobs:
 
       - name: Set cargo cache scope
         id: cargo_cache_scope
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
@@ -125,6 +126,7 @@ jobs:
 
       - name: Set cargo cache scope
         id: cargo_cache_scope
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
@@ -174,6 +176,7 @@ jobs:
 
       - name: Set cargo cache scope
         id: cargo_cache_scope
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}

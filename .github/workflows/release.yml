@@ -26,19 +26,19 @@ jobs:
       contents: read
 
     steps:
-      - name: Require pushed commit SHA
+      - name: Require pushed release revision
         env:
-          COMMIT_SHA: ${{ needs.create_tag.outputs.commit_sha }}
+          RELEASE_REVISION: ${{ needs.create_tag.outputs.release_revision }}
         run: |
-          if [ -z "$COMMIT_SHA" ]; then
-            echo "create_tag did not provide the pushed commit SHA"
+          if [ -z "$RELEASE_REVISION" ]; then
+            echo "create_tag did not provide the pushed release revision"
             exit 1
           fi
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.create_tag.outputs.commit_sha }}
+          ref: ${{ needs.create_tag.outputs.release_revision }}
 
       - name: Setup Rust
         run: |
@@ -47,6 +47,7 @@ jobs:
 
       - name: Set cargo cache scope
         id: cargo_cache_scope
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
@@ -94,19 +95,19 @@ jobs:
       contents: read
 
     steps:
-      - name: Require pushed commit SHA
+      - name: Require pushed release revision
         env:
-          COMMIT_SHA: ${{ needs.create_tag.outputs.commit_sha }}
+          RELEASE_REVISION: ${{ needs.create_tag.outputs.release_revision }}
         run: |
-          if [ -z "$COMMIT_SHA" ]; then
-            echo "create_tag did not provide the pushed commit SHA"
+          if [ -z "$RELEASE_REVISION" ]; then
+            echo "create_tag did not provide the pushed release revision"
             exit 1
           fi
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.create_tag.outputs.commit_sha }}
+          ref: ${{ needs.create_tag.outputs.release_revision }}
 
       - name: Setup Rust
         run: |
@@ -115,6 +116,7 @@ jobs:
 
       - name: Set cargo cache scope
         id: cargo_cache_scope
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
